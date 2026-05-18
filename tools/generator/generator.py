@@ -93,8 +93,10 @@ Learner context:
 Output rules:
 - Format: Markdown only
 - Do NOT include YAML frontmatter — it is prepended separately
+- Do NOT use tables anywhere in the output — not for schedules, topics, resources, or any other content
+- Use headings, bullet points, and plain prose only
 - Structure:
-    1. Realistic weekly schedule with hours/week breakdown
+    1. Realistic weekly schedule with hours/week breakdown — write as a plain list (e.g. "Mon–Thu: 1.5 hrs — focused study")
     2. Phase-by-phase topic breakdown with estimated weeks per phase
     3. Per topic: what to focus on, what to skip, and a "you understand this when..." checkpoint
     4. Recommended free resources — specific titles only, no generic advice

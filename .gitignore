@@ -21,8 +21,8 @@ inputs/**
 outputs/**
 !outputs/ocr/
 !outputs/ocr/.gitkeep
-!outputs/generator/
-!outputs/generator/.gitkeep
+!outputs/study-plan-generator/
+!outputs/study-plan-generator/.gitkeep
 
 # Presets (keep example only)
 tools/ocr/presets/*

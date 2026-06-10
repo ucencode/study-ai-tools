@@ -9,13 +9,13 @@ slide-to-doc/
 ├── inputs/               # drop PDF and curriculum .txt files here
 ├── outputs/
 │   ├── ocr/              # raw + compiled OCR outputs
-│   └── generator/        # generated study plans and materials
+│   └── study-plan-generator/  # generated study plans and materials
 ├── tools/
 │   ├── ocr/              # PDF → text pipeline
 │   │   ├── pdf2img-ocr.py
 │   │   ├── batch-pdf2img-ocr.py
 │   │   └── presets/
-│   └── generator/        # curriculum → study plan / material
+│   └── study-plan-generator/  # curriculum → study plan / material
 │       └── generator.py
 ├── venv/
 └── setup.sh
@@ -114,7 +114,7 @@ Raw OCR results are cached per PDF filename and vision model. Re-running the sam
 
 ---
 
-## Tool 2 — Learning Plan Generator (`tools/generator/`)
+## Tool 2 — Learning Plan Generator (`tools/study-plan-generator/`)
 
 Takes a curriculum `.txt` file and generates a structured self-study plan and per-topic study material using a local LLM.
 
@@ -127,7 +127,7 @@ Any model matched by keywords: `llama3`, `qwen3`, `gemma`, `mistral`, `deepseek`
 **Interactive (picks curriculum file from `inputs/`):**
 
 ```bash
-python tools/generator/generator.py
+python tools/study-plan-generator/generator.py
 ```
 
 Prompts you to select a model, output language, and mode (plan only or plan + material).
@@ -135,7 +135,7 @@ Prompts you to select a model, output language, and mode (plan only or plan + ma
 **With arguments:**
 
 ```bash
-python tools/generator/generator.py inputs/curriculum.txt --lang en --mode full
+python tools/study-plan-generator/generator.py inputs/curriculum.txt --lang en --mode full
 ```
 
 ### Options
@@ -156,7 +156,7 @@ python tools/generator/generator.py inputs/curriculum.txt --lang en --mode full
 ### Output
 
 ```
-outputs/generator/
+outputs/study-plan-generator/
   <timestamp>-<slug>-study_plan.md   # plan mode
   <timestamp>-<slug>-full.md         # full mode
 ```

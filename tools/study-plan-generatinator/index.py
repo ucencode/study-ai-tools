@@ -47,7 +47,7 @@ LANG_EXPERIMENTAL = {
 
 MODES = ("plan", "full")
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "generator"
+OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "study-plan-generatinator"
 INPUT_DIR  = Path(__file__).parent.parent.parent / "inputs"
 
 

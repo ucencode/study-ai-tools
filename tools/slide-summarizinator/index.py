@@ -466,7 +466,7 @@ level: {level_num}
 if __name__ == "__main__":
     args = parse_args()
     if not args.file:
-        print("[usage] python pdf2img-ocr.py <file.pdf> [--preset <FILE>] [--dpi <N>]")
+        print("[usage] python index.py <file.pdf> [--preset <FILE>] [--dpi <N>]")
         exit(1)
     if not Path(args.file).exists():
         print(f"[error] file not found: {args.file!r}")

@@ -1,4 +1,4 @@
-# default config for pdf2img-ocr, trigger it by adding --load-default parameter
+# default config for index.py, trigger it by adding --load-default parameter
 vision_model = "gemma4:e4b"
 refine_model = "gpt-oss:120b-cloud"
 action = "deep"      # clean | summary | deep | skip

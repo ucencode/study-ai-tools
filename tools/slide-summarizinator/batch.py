@@ -8,14 +8,14 @@ from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Batch process all PDF files in the project root using pdf2img-ocr.py"
+        description="Batch process all PDF files in the project root using index.py"
     )
     parser.add_argument(
         "--preset",
         type=str,
         metavar="FILE",
         required=True,
-        help="Preset file to use (from presets/<FILE>), passed to each pdf2img-ocr.py call",
+        help="Preset file to use (from presets/<FILE>), passed to each index.py call",
     )
     return parser.parse_args()
 
@@ -24,7 +24,7 @@ def main():
     args = parse_args()
 
     project_root = Path(__file__).parent.parent.parent.resolve()
-    main_script = Path(__file__).parent / "pdf2img-ocr.py"
+    main_script = Path(__file__).parent / "index.py"
 
     pdfs = sorted((project_root / "inputs").glob("*.pdf"))
 

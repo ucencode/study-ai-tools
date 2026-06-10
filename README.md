@@ -1,11 +1,11 @@
-# study-ai-tool
+# study-ai-tools
 
 Offline AI toolkit for converting PDFs and slides into structured documents and self-study material, powered by Ollama and local LLMs.
 
 ## Project Structure
 
 ```
-study-ai-tool/
+study-ai-tools/
 ├── inputs/               # drop PDF and curriculum .txt files here
 ├── outputs/
 │   ├── slide-summarizinator/      # raw + compiled OCR outputs

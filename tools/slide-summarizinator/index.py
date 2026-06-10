@@ -141,7 +141,7 @@ AUDIENCE_INSTRUCTION = {
 OCR_MODEL_KEYWORDS = ["qwen3.5", "qwen3-vl", "qwen2.5vl", "deepseek-ocr", "llama3.2-vision", "gemma4", "ministral-3", "glm-ocr"]
 REFINE_MODEL_KEYWORDS  = ["glm-5.1", "gemma4", "qwen3.5", "gpt-oss"]
 
-OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "ocr"
+OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "slide-summarizinator"
 INPUT_DIR  = Path(__file__).parent.parent.parent / "inputs"
 
 REFINE_TEMPERATURE = {"clean": 0, "summary": 0, "deep": 0.4}

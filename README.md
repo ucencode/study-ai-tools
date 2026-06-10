@@ -12,11 +12,11 @@ slide-to-doc/
 │   └── study-plan-generatinator/  # generated study plans and materials
 ├── tools/
 │   ├── slide-summarizinator/  # PDF → text pipeline
-│   │   ├── pdf2img-ocr.py
-│   │   ├── batch-pdf2img-ocr.py
+│   │   ├── index.py
+│   │   ├── batch.py
 │   │   └── presets/
 │   └── study-plan-generatinator/  # curriculum → study plan / material
-│       └── generator.py
+│       └── index.py
 ├── venv/
 └── setup.sh
 ```
@@ -55,7 +55,7 @@ ollama pull glm-ocr:bf16
 **Interactive:**
 
 ```bash
-python tools/slide-summarizinator/pdf2img-ocr.py inputs/slides.pdf
+python tools/slide-summarizinator/index.py inputs/slides.pdf
 ```
 
 Prompts you to select vision model, refine mode, language, and audience level. Use shell tab completion on the file path.
@@ -63,13 +63,13 @@ Prompts you to select vision model, refine mode, language, and audience level. U
 **With preset (non-interactive):**
 
 ```bash
-python tools/slide-summarizinator/pdf2img-ocr.py inputs/slides.pdf --preset example.toml
+python tools/slide-summarizinator/index.py inputs/slides.pdf --preset example.toml
 ```
 
 **Batch — process all PDFs in `inputs/`:**
 
 ```bash
-python tools/slide-summarizinator/batch-pdf2img-ocr.py --preset example.toml
+python tools/slide-summarizinator/batch.py --preset example.toml
 ```
 
 ### Options
@@ -127,7 +127,7 @@ Any model matched by keywords: `llama3`, `qwen3`, `gemma`, `mistral`, `deepseek`
 **Interactive (picks curriculum file from `inputs/`):**
 
 ```bash
-python tools/study-plan-generatinator/generator.py
+python tools/study-plan-generatinator/index.py
 ```
 
 Prompts you to select a model, output language, and mode (plan only or plan + material).
@@ -135,7 +135,7 @@ Prompts you to select a model, output language, and mode (plan only or plan + ma
 **With arguments:**
 
 ```bash
-python tools/study-plan-generatinator/generator.py inputs/curriculum.txt --lang en --mode full
+python tools/study-plan-generatinator/index.py inputs/curriculum.txt --lang en --mode full
 ```
 
 ### Options

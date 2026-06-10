@@ -9,7 +9,7 @@ source venv/bin/activate
 
 echo "[setup] installing dependencies..."
 pip install --upgrade pip
-pip install pdf2image ollama pillow
+pip install -r requirements.txt
 
 echo ""
 echo "[setup] done. Activate your environment with:"

@@ -1,23 +1,23 @@
-# slide-to-doc
+# study-ai-tool
 
 Offline AI toolkit for converting PDFs and slides into structured documents and self-study material, powered by Ollama and local LLMs.
 
 ## Project Structure
 
 ```
-slide-to-doc/
+study-ai-tool/
 ├── inputs/               # drop PDF and curriculum .txt files here
 ├── outputs/
-│   ├── slide-summarizinator/  # raw + compiled OCR outputs
+│   ├── slide-summarizinator/      # raw + compiled OCR outputs
 │   └── study-plan-generatinator/  # generated study plans and materials
 ├── tools/
-│   ├── slide-summarizinator/  # PDF → text pipeline
+│   ├── slide-summarizinator/      # PDF → text pipeline
 │   │   ├── index.py
 │   │   ├── batch.py
 │   │   └── presets/
 │   └── study-plan-generatinator/  # curriculum → study plan / material
 │       └── index.py
-├── venv/
+├── requirements.txt
 └── setup.sh
 ```
 
@@ -29,8 +29,9 @@ slide-to-doc/
 ## Setup
 
 ```bash
-bash setup.sh
+python3 -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt
 ```
 
 ---

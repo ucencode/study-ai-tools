@@ -8,14 +8,14 @@ Offline AI toolkit for converting PDFs and slides into structured documents and 
 slide-to-doc/
 ├── inputs/               # drop PDF and curriculum .txt files here
 ├── outputs/
-│   ├── ocr/              # raw + compiled OCR outputs
-│   └── study-plan-generator/  # generated study plans and materials
+│   ├── slide-summarizinator/  # raw + compiled OCR outputs
+│   └── study-plan-generatinator/  # generated study plans and materials
 ├── tools/
-│   ├── ocr/              # PDF → text pipeline
+│   ├── slide-summarizinator/  # PDF → text pipeline
 │   │   ├── pdf2img-ocr.py
 │   │   ├── batch-pdf2img-ocr.py
 │   │   └── presets/
-│   └── study-plan-generator/  # curriculum → study plan / material
+│   └── study-plan-generatinator/  # curriculum → study plan / material
 │       └── generator.py
 ├── venv/
 └── setup.sh
@@ -35,7 +35,7 @@ source venv/bin/activate
 
 ---
 
-## Tool 1 — OCR (`tools/ocr/`)
+## Tool 1 — OCR (`tools/slide-summarizinator/`)
 
 Converts PDF pages to images, runs OCR via a vision model, and optionally refines the output into clean text, study notes, or structured book-style documents.
 
@@ -55,7 +55,7 @@ ollama pull glm-ocr:bf16
 **Interactive:**
 
 ```bash
-python tools/ocr/pdf2img-ocr.py inputs/slides.pdf
+python tools/slide-summarizinator/pdf2img-ocr.py inputs/slides.pdf
 ```
 
 Prompts you to select vision model, refine mode, language, and audience level. Use shell tab completion on the file path.
@@ -63,13 +63,13 @@ Prompts you to select vision model, refine mode, language, and audience level. U
 **With preset (non-interactive):**
 
 ```bash
-python tools/ocr/pdf2img-ocr.py inputs/slides.pdf --preset example.toml
+python tools/slide-summarizinator/pdf2img-ocr.py inputs/slides.pdf --preset example.toml
 ```
 
 **Batch — process all PDFs in `inputs/`:**
 
 ```bash
-python tools/ocr/batch-pdf2img-ocr.py --preset example.toml
+python tools/slide-summarizinator/batch-pdf2img-ocr.py --preset example.toml
 ```
 
 ### Options
@@ -77,11 +77,11 @@ python tools/ocr/batch-pdf2img-ocr.py --preset example.toml
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--dpi` | `200` | Render resolution (higher = more detail, slower) |
-| `--preset` | — | Load a TOML preset from `tools/ocr/presets/`, skip interactive prompts |
+| `--preset` | — | Load a TOML preset from `tools/slide-summarizinator/presets/`, skip interactive prompts |
 
 ### Presets
 
-TOML files in `tools/ocr/presets/`. See [`tools/ocr/presets/example.toml`](tools/ocr/presets/example.toml):
+TOML files in `tools/slide-summarizinator/presets/`. See [`tools/slide-summarizinator/presets/example.toml`](tools/slide-summarizinator/presets/example.toml):
 
 ```toml
 vision_model = "qwen3.5:9b"
@@ -105,7 +105,7 @@ Validation runs before processing — invalid models, actions, languages, or lev
 ### Output
 
 ```
-outputs/ocr/
+outputs/slide-summarizinator/
   <timestamp>-raw.txt       # raw OCR text (file, pages, dpi, model)
   <timestamp>-compiled.txt  # refined output (origin, model, mode, lang, level)
 ```
@@ -114,7 +114,7 @@ Raw OCR results are cached per PDF filename and vision model. Re-running the sam
 
 ---
 
-## Tool 2 — Learning Plan Generator (`tools/study-plan-generator/`)
+## Tool 2 — Learning Plan Generator (`tools/study-plan-generatinator/`)
 
 Takes a curriculum `.txt` file and generates a structured self-study plan and per-topic study material using a local LLM.
 
@@ -127,7 +127,7 @@ Any model matched by keywords: `llama3`, `qwen3`, `gemma`, `mistral`, `deepseek`
 **Interactive (picks curriculum file from `inputs/`):**
 
 ```bash
-python tools/study-plan-generator/generator.py
+python tools/study-plan-generatinator/generator.py
 ```
 
 Prompts you to select a model, output language, and mode (plan only or plan + material).
@@ -135,7 +135,7 @@ Prompts you to select a model, output language, and mode (plan only or plan + ma
 **With arguments:**
 
 ```bash
-python tools/study-plan-generator/generator.py inputs/curriculum.txt --lang en --mode full
+python tools/study-plan-generatinator/generator.py inputs/curriculum.txt --lang en --mode full
 ```
 
 ### Options
@@ -156,7 +156,7 @@ python tools/study-plan-generator/generator.py inputs/curriculum.txt --lang en -
 ### Output
 
 ```
-outputs/study-plan-generator/
+outputs/study-plan-generatinator/
   <timestamp>-<slug>-study_plan.md   # plan mode
   <timestamp>-<slug>-full.md         # full mode
 ```

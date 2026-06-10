@@ -19,14 +19,14 @@ inputs/**
 
 # Output files (keep folders, ignore content)
 outputs/**
-!outputs/ocr/
-!outputs/ocr/.gitkeep
-!outputs/study-plan-generator/
-!outputs/study-plan-generator/.gitkeep
+!outputs/slide-summarizinator/
+!outputs/slide-summarizinator/.gitkeep
+!outputs/study-plan-generatinator/
+!outputs/study-plan-generatinator/.gitkeep
 
 # Presets (keep example only)
-tools/ocr/presets/*
-!tools/ocr/presets/example.toml
+tools/slide-summarizinator/presets/*
+!tools/slide-summarizinator/presets/example.toml
 
 # OS
 .DS_Store

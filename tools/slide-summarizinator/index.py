@@ -312,16 +312,28 @@ def refine(text: str, mode: str, lang: str, model: str, audience: str | None = N
     print(f"[refine] sending {len(text)} chars...", end=" ", flush=True)
 
     start = time.time()
-    response: ChatResponse = chat(
+    print(f"streaming...\n")
+    print("-" * 56)
+
+    chunks = []
+    stream = chat(
         model=model,
         options={"temperature": temp, "num_predict": max_tokens, "num_ctx": 32768},
         messages=[
             {"role": "system", "content": prompt},
             {"role": "user", "content": text}
-        ]
+        ],
+        stream=True,
     )
-    result = response.message.content
-    print(f"done ({time.time() - start:.2f}s, {len(result)} chars)")
+
+    for chunk in stream:
+        token = chunk.message.content
+        print(token, end="", flush=True)
+        chunks.append(token)
+
+    result = "".join(chunks)
+    print(f"\n" + "-" * 56)
+    print(f"[refine] done ({time.time() - start:.2f}s, {len(result)} chars)")
     return result
 
 

@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import math
 import subprocess
 import argparse
 import time
@@ -77,6 +78,11 @@ Rules:
 - Normalize course name to title case
 - title field must follow pattern: "Self-Study Plan: <Course Name>"
 - course_code only if explicitly present, else empty string
+- "topics" must contain ONLY subject-matter concepts the learner will study and practice.
+  Exclude proficiency frameworks, assessment scales/rubrics, grading criteria, learning
+  objectives, course structure, or administrative procedures — even if the curriculum
+  text lists them alongside real topics.
+  Example of bad topic entries: "CEFR Proficiency Levels", "Grading Rubric", "Course Assessment Criteria"
 - Raw JSON only — no explanation, no markdown fences, no preamble"""
 
 META_USER = "Extract metadata from this curriculum:\n\n{raw}"
@@ -111,6 +117,7 @@ Output rules:
 > - <Third recommendation, if relevant>
 > *Pursue these only if you want to go beyond the phase scope.*
 
+- Write in the student's frame, not the curriculum's: name the actual concepts, operations, and techniques — never echo abstract syllabus language like "understand X" or "explore Y". Translate each topic into what the learner must concretely be able to do, derive, prove, implement, or explain to someone else.
 - Be direct and opinionated; skip hedging and filler
 - Assume the learner is intelligent but time-constrained"""
 
@@ -187,6 +194,48 @@ Return ONLY a valid JSON array of strings, one entry per topic, in the order the
 No explanations, no markdown fences, no nesting."""
 
 TOPIC_EXTRACT_USER = "Extract the topic list from this study plan:\n\n{plan}"
+
+ASSESS_SYSTEM = """\
+You are a curriculum familiarity assessor.
+Given a course curriculum and a target question count, generate exactly that many \
+yes/no self-assessment questions to check what the learner already knows.
+
+STRICT RULE — what to ask about:
+  Ask ONLY about subject-matter concepts the learner will study and practice.
+  Example (language course): "Do you know how to conjugate verbs in the past tense?"
+  Example (math course): "Are you familiar with the chain rule in differentiation?"
+
+STRICT RULE — what NEVER to ask about:
+  Do NOT ask about proficiency frameworks, assessment scales, grading rubrics,
+  learning objectives, curriculum structure, course design, administrative procedures,
+  or how the course itself is organized.
+  Bad example: "Do you know the four UN language proficiency levels?"
+  Bad example: "Are you familiar with how this course assesses speaking skills?"
+
+Output ONLY a JSON array. No explanation, no markdown fences, no extra text.
+
+Each element must have exactly these keys:
+[
+  {
+    "id": 1,
+    "topic": "<topic name this question covers>",
+    "question": "Do you know ...?"
+  }
+]
+
+Additional rules:
+- id is 1-based integer
+- every question must start with "Do you know" or "Are you familiar with"
+- questions must be specific — name the concept, not just the topic area
+- cover a spread of topics, not just the first few"""
+
+ASSESS_USER = """\
+Curriculum:
+{raw}
+
+Topics: {topics}
+
+Generate exactly {num_q} familiarity questions."""
 
 
 # ── ollama model discovery ────────────────────────────────────────────────────
@@ -332,11 +381,15 @@ def _dict_to_yaml(data: dict) -> str:
 
 # ── call 2: study plan (streaming) ───────────────────────────────────────────
 
-def generate_plan(raw: str, lang: str, model: str) -> str:
+def generate_plan(raw: str, lang: str, model: str, assessment_summary: str = "") -> str:
     lang_name = LANG_INSTRUCTION[lang]
     print(f"\n[plan] model={model} lang={lang_name}")
     print(f"[plan] streaming...\n")
     print("-" * 56)
+
+    user_content = PLAN_USER.format(lang_name=lang_name, raw=raw)
+    if assessment_summary:
+        user_content += f"\n\n---\nLearner Assessment (use this to calibrate depth and focus):\n{assessment_summary}"
 
     start = time.time()
     chunks = []
@@ -345,7 +398,7 @@ def generate_plan(raw: str, lang: str, model: str) -> str:
         options={"temperature": 0.4, "num_ctx": 32768, "num_predict": 65536},
         messages=[
             {"role": "system", "content": PLAN_SYSTEM},
-            {"role": "user",   "content": PLAN_USER.format(lang_name=lang_name, raw=raw)},
+            {"role": "user",   "content": user_content},
         ],
         stream=True,
     )
@@ -392,15 +445,84 @@ def extract_topics_from_plan(plan_body: str, model: str) -> list[str]:
         return []
 
 
+# ── assessment: generate + interactively collect answers ─────────────────────
+
+def run_assessment(raw: str, topics: list[str], model: str) -> str:
+    n = len(topics)
+    num_q = max(1, math.ceil(1 + 3.3 * math.log10(n))) if n > 1 else 1
+
+    print(f"\n[assessment] generating {num_q} questions for {n} topics...", end=" ", flush=True)
+    start = time.time()
+
+    response: ChatResponse = chat(
+        model=model,
+        options={"temperature": 0, "num_ctx": 8192, "num_predict": 4096},
+        messages=[
+            {"role": "system", "content": ASSESS_SYSTEM},
+            {"role": "user",   "content": ASSESS_USER.format(
+                raw=raw,
+                topics=", ".join(topics),
+                num_q=num_q,
+            )},
+        ],
+    )
+
+    raw_json = _sanitize_json(response.message.content)
+    print(f"done ({time.time() - start:.2f}s)")
+
+    try:
+        questions = json.loads(raw_json)
+        if not isinstance(questions, list):
+            raise ValueError("expected a JSON array")
+    except Exception as e:
+        print(f"[assessment] parse failed ({e}) — skipping assessment")
+        return ""
+
+    # trim to num_q in case the model drifts
+    questions = questions[:num_q]
+
+    print(f"\n[assessment] {len(questions)} questions — answer Y/N for each\n")
+    known, unknown = [], []
+    for q in questions:
+        while True:
+            ans = input(f"  {q['question']} (Y/N): ").strip().upper()
+            if ans in ("Y", "N", "YES", "NO"):
+                break
+            print("  Please answer Y or N.")
+        (known if ans.startswith("Y") else unknown).append(q)
+
+    known_count = len(known)
+    total = len(questions)
+    print(f"\n[assessment] familiar with {known_count}/{total} topics")
+
+    lines = [f"Learner familiarity: {known_count}/{total} topics already known."]
+    if known:
+        lines.append("Already familiar with:")
+        lines += [f"  - [{q.get('topic', '')}] {q['question']}" for q in known]
+    if unknown:
+        lines.append("Not yet familiar with:")
+        lines += [f"  - [{q.get('topic', '')}] {q['question']}" for q in unknown]
+
+    return "\n".join(lines)
+
+
 # ── call 3: study material (streaming) ───────────────────────────────────────
 
-def generate_material(raw: str, topics: list[str], lang: str, model: str) -> str:
+def generate_material(raw: str, topics: list[str], lang: str, model: str, assessment_summary: str = "") -> str:
     lang_name  = LANG_INSTRUCTION[lang]
     topics_str = "\n".join(f"{i+1}. {t}" for i, t in enumerate(topics))
 
     print(f"\n[material] model={model} lang={lang_name} topics={len(topics)}")
     print(f"[material] streaming...\n")
     print("-" * 56)
+
+    user_content = MATERIAL_USER.format(
+        lang_name=lang_name,
+        topics=topics_str,
+        raw=raw,
+    )
+    if assessment_summary:
+        user_content += f"\n\n---\nLearner Assessment (use this to calibrate depth — skip basics on topics already known, go deeper on unknown ones):\n{assessment_summary}"
 
     start = time.time()
     chunks = []
@@ -409,11 +531,7 @@ def generate_material(raw: str, topics: list[str], lang: str, model: str) -> str
         options={"temperature": 0.3, "num_ctx": 65536, "num_predict": 131072},
         messages=[
             {"role": "system", "content": MATERIAL_SYSTEM},
-            {"role": "user",   "content": MATERIAL_USER.format(
-                lang_name=lang_name,
-                topics=topics_str,
-                raw=raw,
-            )},
+            {"role": "user",   "content": user_content},
         ],
         stream=True,
     )
@@ -494,6 +612,8 @@ def parse_args():
     parser.add_argument("--lang",  type=str, default=None, help="Output language code")
     parser.add_argument("--mode",  type=str, choices=MODES, default=None,
                         help="plan = study plan only | full = plan + material (default: ask)")
+    parser.add_argument("--skip-assessment", action="store_true",
+                        help="skip the learner familiarity assessment")
     return parser.parse_args()
 
 
@@ -536,17 +656,27 @@ if __name__ == "__main__":
     frontmatter, topics = generate_frontmatter(raw, model, mode)
     print(frontmatter)
 
-    # call 2 — study plan (streaming)
-    plan_body = generate_plan(raw, lang, model)
+    # assessment — gauge learner's current proficiency
+    if args.skip_assessment:
+        print("\n[assessment] skipped (--skip-assessment)")
+        assessment_summary = ""
+    else:
+        assessment_summary = run_assessment(raw, topics, model)
 
-    sections = [("Study Plan", plan_body)]
+    # call 2 — study plan (streaming)
+    plan_body = generate_plan(raw, lang, model, assessment_summary)
+
+    sections = []
+    if assessment_summary:
+        sections.append(("Learner Assessment", assessment_summary))
+    sections.append(("Study Plan", plan_body))
 
     # call 2b — expand topic list from plan (fast, no stream)
     # call 3   — study material (streaming, only if full mode)
     if mode == "full":
         expanded = extract_topics_from_plan(plan_body, model)
         material_topics = expanded if expanded else topics
-        material_body = generate_material(raw, material_topics, lang, model)
+        material_body = generate_material(raw, material_topics, lang, model, assessment_summary)
         sections.append(("Study Material", material_body))
 
     eject_model(model)

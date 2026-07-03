@@ -78,6 +78,11 @@ Rules:
 - Normalize course name to title case
 - title field must follow pattern: "Self-Study Plan: <Course Name>"
 - course_code only if explicitly present, else empty string
+- "topics" must contain ONLY subject-matter concepts the learner will study and practice.
+  Exclude proficiency frameworks, assessment scales/rubrics, grading criteria, learning
+  objectives, course structure, or administrative procedures — even if the curriculum
+  text lists them alongside real topics.
+  Example of bad topic entries: "CEFR Proficiency Levels", "Grading Rubric", "Course Assessment Criteria"
 - Raw JSON only — no explanation, no markdown fences, no preamble"""
 
 META_USER = "Extract metadata from this curriculum:\n\n{raw}"
@@ -503,13 +508,21 @@ def run_assessment(raw: str, topics: list[str], model: str) -> str:
 
 # ── call 3: study material (streaming) ───────────────────────────────────────
 
-def generate_material(raw: str, topics: list[str], lang: str, model: str) -> str:
+def generate_material(raw: str, topics: list[str], lang: str, model: str, assessment_summary: str = "") -> str:
     lang_name  = LANG_INSTRUCTION[lang]
     topics_str = "\n".join(f"{i+1}. {t}" for i, t in enumerate(topics))
 
     print(f"\n[material] model={model} lang={lang_name} topics={len(topics)}")
     print(f"[material] streaming...\n")
     print("-" * 56)
+
+    user_content = MATERIAL_USER.format(
+        lang_name=lang_name,
+        topics=topics_str,
+        raw=raw,
+    )
+    if assessment_summary:
+        user_content += f"\n\n---\nLearner Assessment (use this to calibrate depth — skip basics on topics already known, go deeper on unknown ones):\n{assessment_summary}"
 
     start = time.time()
     chunks = []
@@ -518,11 +531,7 @@ def generate_material(raw: str, topics: list[str], lang: str, model: str) -> str
         options={"temperature": 0.3, "num_ctx": 65536, "num_predict": 131072},
         messages=[
             {"role": "system", "content": MATERIAL_SYSTEM},
-            {"role": "user",   "content": MATERIAL_USER.format(
-                lang_name=lang_name,
-                topics=topics_str,
-                raw=raw,
-            )},
+            {"role": "user",   "content": user_content},
         ],
         stream=True,
     )
@@ -603,6 +612,8 @@ def parse_args():
     parser.add_argument("--lang",  type=str, default=None, help="Output language code")
     parser.add_argument("--mode",  type=str, choices=MODES, default=None,
                         help="plan = study plan only | full = plan + material (default: ask)")
+    parser.add_argument("--skip-assessment", action="store_true",
+                        help="skip the learner familiarity assessment")
     return parser.parse_args()
 
 
@@ -646,19 +657,26 @@ if __name__ == "__main__":
     print(frontmatter)
 
     # assessment — gauge learner's current proficiency
-    assessment_summary = run_assessment(raw, topics, model)
+    if args.skip_assessment:
+        print("\n[assessment] skipped (--skip-assessment)")
+        assessment_summary = ""
+    else:
+        assessment_summary = run_assessment(raw, topics, model)
 
     # call 2 — study plan (streaming)
     plan_body = generate_plan(raw, lang, model, assessment_summary)
 
-    sections = [("Study Plan", plan_body)]
+    sections = []
+    if assessment_summary:
+        sections.append(("Learner Assessment", assessment_summary))
+    sections.append(("Study Plan", plan_body))
 
     # call 2b — expand topic list from plan (fast, no stream)
     # call 3   — study material (streaming, only if full mode)
     if mode == "full":
         expanded = extract_topics_from_plan(plan_body, model)
         material_topics = expanded if expanded else topics
-        material_body = generate_material(raw, material_topics, lang, model)
+        material_body = generate_material(raw, material_topics, lang, model, assessment_summary)
         sections.append(("Study Material", material_body))
 
     eject_model(model)

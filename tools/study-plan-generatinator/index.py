@@ -46,7 +46,7 @@ LANG_EXPERIMENTAL = {
     "hi", "vi", "uk", "fi", "sv", "th",
 }
 
-MODES = ("plan", "full")
+MODES = ("plan", "full", "book")
 
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "study-plan-generatinator"
 INPUT_DIR  = Path(__file__).parent.parent.parent / "inputs"
@@ -184,6 +184,106 @@ Curriculum context (for depth calibration):
 {raw}
 \"\"\""""
 
+MATERIAL_TOPIC_SYSTEM = """\
+You are a technical study material writer for a self-directed learner, writing ONE chapter \
+at a time in a sequential, book-style curriculum. Each chapter must read as though it belongs \
+to the same book: consistent voice, deliberate continuity, no re-explaining what earlier \
+chapters already established.
+
+Learner context:
+- Works a full-time job; limited study time — material must be dense, not padded
+- Has a software engineering background: advanced in backend, basic in frontend
+- For topics outside software engineering, assume beginner level and build from first principles
+- Wants real understanding, not surface definitions
+- Calibrate depth accordingly: skip basics the learner already knows for SE topics,
+  but do not skip foundational explanation for non-SE topics
+
+Chaining rules:
+- You will be given a digest of every chapter already covered. Use it to avoid re-deriving
+  concepts, notation, or definitions already established — reference them by name instead
+  (e.g. "using the chain rule from the previous chapter...").
+- If this chapter builds directly on a prior one, open with a short "### Building On" section
+  (2-4 sentences) naming exactly what it relies on. If it does NOT build on prior material,
+  state that explicitly instead of forcing a false connection, and omit inventing dependencies.
+- You may name chapters that come later in the sequence (the full sequence is provided) to
+  foreshadow (e.g. "you'll extend this to X later"), but never assume details about their
+  content since they have not been written yet.
+
+Output rules:
+- Format: Markdown only
+- Do NOT include YAML frontmatter
+- Write ONLY the one chapter you are asked for — do not write any other topic — using
+  EXACTLY this template, in this order, with these exact headings:
+
+---
+## <Topic Name>
+
+### Building On *(omit this entire section if this is the first chapter or there is no real dependency)*
+2-4 sentences naming exactly which prior chapter(s)/concepts this one builds on.
+
+### Concept & Intuition
+Explain the core idea. Build intuition first, then formalize.
+Cover the "why this exists" before the "how it works".
+Use analogies only where they genuinely clarify.
+
+### Worked Examples
+Minimum 2 worked examples, stepped through clearly.
+Show reasoning at each step, not just the mechanics.
+
+### Practice Problems
+3-5 problems of increasing difficulty. No solutions.
+Last problem must stretch beyond routine application.
+
+### Common Misconceptions
+2-3 specific wrong mental models people bring INTO this topic.
+State the misconception explicitly, then correct it precisely.
+No generic warnings — name the exact flawed assumption.
+
+### Go Deeper *(optional — pursue only if curious)*
+2-4 concrete recommendations for going beyond this topic.
+Each entry must name: a specific book + chapter, a named theorem,
+a specific paper, or a precisely described problem class.
+No generic advice like "read more about X".
+---
+
+- Be precise and direct; no filler, no repetition of earlier chapters
+- Write comprehensively — this is a full book chapter, not a summary. Favor depth (more
+  worked examples, fuller derivations, richer misconception coverage) over brevity.
+- Assume the learner is intelligent but time-constrained"""
+
+MATERIAL_TOPIC_USER = """\
+Respond in {lang_name}.
+
+This is chapter {index} of {total} in a sequential study curriculum.
+
+Full chapter sequence:
+{topic_sequence}
+
+{chain_context}Write comprehensive, book-style study material for this chapter only:
+"{topic}"
+
+Curriculum context (for depth calibration):
+\"\"\"
+{raw}
+\"\"\""""
+
+CHAIN_SUMMARY_SYSTEM = """\
+You are a study-chapter digest writer.
+
+Given the full text of one chapter from a study-material book, produce a 2-3 sentence \
+digest capturing: the core concept(s) it established, any key terms/notation it introduced, \
+and what the learner should now know entering the next chapter.
+
+Output ONLY the digest as plain text — no headings, no markdown, no preamble, no quotes."""
+
+CHAIN_SUMMARY_USER = """\
+Chapter: {topic}
+
+Chapter text:
+\"\"\"
+{body}
+\"\"\""""
+
 TOPIC_EXTRACT_SYSTEM = """\
 You are a topic list extractor.
 
@@ -289,11 +389,14 @@ def ask_language() -> str:
 def ask_mode() -> str:
     print("""
 Mode?
-  1. plan   — study plan only
-  2. full   — study plan + study material per topic
+  1. plan   — study plan only (fastest)
+  2. full   — study plan + study material for all topics in one pass (fast)
+  3. book   — study plan + one book-style chapter per topic, each building on the
+              last (slow: 2 model calls per topic, can take 30-60+ min on large
+              curricula — but safe to Ctrl+C and resume later)
 [default: 1]""")
     choice = input(">>> ").strip() or "1"
-    return {"1": "plan", "2": "full"}.get(choice, "plan")
+    return {"1": "plan", "2": "full", "3": "book"}.get(choice, "plan")
 
 
 def ask_file() -> str:
@@ -311,6 +414,18 @@ def ask_file() -> str:
         if 0 <= idx < len(txt_files):
             return str(txt_files[idx])
     return choice
+
+
+def _format_duration(seconds: float) -> str:
+    """Render a duration as e.g. '45s', '3m12s', '1h05m' for progress/ETA messages."""
+    seconds = int(seconds)
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    if h:
+        return f"{h}h{m:02d}m"
+    if m:
+        return f"{m}m{s:02d}s"
+    return f"{s}s"
 
 
 # Sanitize JSON by removing markdown code fences if present, and trimming whitespace.
@@ -547,6 +662,128 @@ def generate_material(raw: str, topics: list[str], lang: str, model: str, assess
     return body
 
 
+# ── call 3b: book mode — chained per-topic chapter (streaming) + digest ──────
+
+def summarize_topic_for_chain(topic: str, body: str, model: str) -> str:
+    print(f"[book] digesting \"{topic}\" for chaining...", end=" ", flush=True)
+    start = time.time()
+
+    try:
+        response: ChatResponse = chat(
+            model=model,
+            options={"temperature": 0, "num_ctx": 8192, "num_predict": 300},
+            messages=[
+                {"role": "system", "content": CHAIN_SUMMARY_SYSTEM},
+                {"role": "user",   "content": CHAIN_SUMMARY_USER.format(topic=topic, body=body)},
+            ],
+        )
+        digest = response.message.content.strip()
+        print(f"done ({time.time() - start:.2f}s)")
+        return digest
+    except Exception as e:
+        print(f"warn: digest failed ({e}) — continuing without it")
+        return ""
+
+
+def generate_book_topic(topic: str, index: int, total: int, topic_names: list[str],
+                        raw: str, lang: str, model: str, assessment_summary: str,
+                        chain_digest: list[dict]) -> str:
+    lang_name = LANG_INSTRUCTION[lang]
+
+    topic_sequence = "\n".join(
+        f"{i+1}. {t}" + ("  ← YOU ARE WRITING THIS ONE" if i == index - 1 else "")
+        for i, t in enumerate(topic_names)
+    )
+
+    chain_context = ""
+    if chain_digest:
+        digest_lines = "\n".join(
+            f"{i+1}. {d['topic']} — {d['digest']}" for i, d in enumerate(chain_digest) if d.get("digest")
+        )
+        if digest_lines:
+            chain_context = (
+                "Digest of chapters already covered (do not repeat these explanations; build on them):\n"
+                f"{digest_lines}\n\n"
+            )
+
+    user_content = MATERIAL_TOPIC_USER.format(
+        lang_name=lang_name,
+        index=index,
+        total=total,
+        topic_sequence=topic_sequence,
+        chain_context=chain_context,
+        topic=topic,
+        raw=raw,
+    )
+    if assessment_summary:
+        user_content += f"\n\n---\nLearner Assessment (use this to calibrate depth — skip basics on topics already known, go deeper on unknown ones):\n{assessment_summary}"
+
+    print(f"\n[book] chapter {index}/{total}: \"{topic}\" — model={model} lang={lang_name}")
+    print(f"[book] streaming...\n")
+    print("-" * 56)
+
+    start = time.time()
+    chunks = []
+    stream = chat(
+        model=model,
+        options={"temperature": 0.3, "num_ctx": 32768, "num_predict": 16384},
+        messages=[
+            {"role": "system", "content": MATERIAL_TOPIC_SYSTEM},
+            {"role": "user",   "content": user_content},
+        ],
+        stream=True,
+    )
+
+    for chunk in stream:
+        token = chunk.message.content
+        print(token, end="", flush=True)
+        chunks.append(token)
+
+    body = "".join(chunks)
+    print(f"\n" + "-" * 56)
+    print(f"[book] done ({time.time() - start:.2f}s, {len(body)} chars)")
+    return body
+
+
+def generate_book_material(raw: str, topics: list[str], lang: str, model: str,
+                           assessment_summary: str, partial_state: dict, partial_file: Path) -> str:
+    total     = len(topics)
+    completed = partial_state["completed"]
+    durations = [e["duration"] for e in completed if "duration" in e]
+
+    if not completed:
+        print(f"\n[book] {total} chapters to write with {model} — 2 model calls per chapter "
+              f"(1 long write + 1 quick digest for chaining).")
+        print(f"[book] progress is saved after every chapter — safe to Ctrl+C and resume later.")
+    else:
+        print(f"\n[book] resuming: {len(completed)}/{total} chapters already done, "
+              f"{total - len(completed)} to go.")
+
+    run_start = time.time()
+
+    for index in range(len(completed) + 1, total + 1):
+        topic = topics[index - 1]
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            eta = avg * (total - index + 1)
+            print(f"[book] {len(completed)}/{total} done — "
+                  f"est. {_format_duration(eta)} remaining (avg {_format_duration(avg)}/chapter)")
+
+        chapter_start = time.time()
+        body  = generate_book_topic(
+            topic, index, total, topics, raw, lang, model, assessment_summary, completed,
+        )
+        digest = summarize_topic_for_chain(topic, body, model)
+        duration = time.time() - chapter_start
+        durations.append(duration)
+        completed.append({"topic": topic, "body": body, "digest": digest, "duration": duration})
+        save_partial(partial_file, partial_state)
+
+    print(f"\n[book] all {total} chapters complete ({_format_duration(time.time() - run_start)} this session)")
+    return "\n\n".join(entry["body"] for entry in completed)
+
+
 # ── cache ─────────────────────────────────────────────────────────────────────
 
 def find_cached(input_file: str, model: str, lang: str, mode: str) -> Path | None:
@@ -554,7 +791,7 @@ def find_cached(input_file: str, model: str, lang: str, mode: str) -> Path | Non
     if not output_dir.exists():
         return None
     basename = os.path.basename(input_file)
-    pattern  = "*-study_plan.md" if mode == "plan" else "*-full.md"
+    pattern  = {"plan": "*-study_plan.md", "full": "*-full.md", "book": "*-book.md"}[mode]
     for path in sorted(output_dir.glob(pattern), reverse=True):
         meta = _read_frontmatter(path)
         if (meta.get("source") == basename
@@ -582,6 +819,44 @@ def _read_frontmatter(path: Path) -> dict:
     return meta
 
 
+# ── partial state (book mode resume) ──────────────────────────────────────────
+
+def partial_path(input_file: str, model: str, lang: str) -> Path:
+    partial_dir = OUTPUT_DIR / ".partial"
+    slug        = re.sub(r"[^\w]+", "_", Path(input_file).stem.lower()).strip("_")[:40]
+    model_safe  = re.sub(r"[^\w]+", "_", model.lower()).strip("_")
+    return partial_dir / f"{slug}__{model_safe}__{lang}.json"
+
+
+def load_partial(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception as e:
+        print(f"[book] warn: could not read partial file ({e}) — starting fresh")
+        return None
+
+
+def save_partial(path: Path, state: dict):
+    os.makedirs(path.parent, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def delete_partial(path: Path):
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def ask_resume(n_done: int, n_total: int) -> bool:
+    print(f"\n[book] found an in-progress run: {n_done}/{n_total} chapters already written.")
+    print("Resume from where it left off? [Y/n] (n = discard it and start over)")
+    ans = input(">>> ").strip().lower() or "y"
+    return ans.startswith("y")
+
+
 # ── output ────────────────────────────────────────────────────────────────────
 
 def save_output(frontmatter: str, sections: list[tuple[str, str]],
@@ -589,7 +864,7 @@ def save_output(frontmatter: str, sections: list[tuple[str, str]],
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     slug      = re.sub(r"[^\w]+", "_", Path(input_file).stem.lower()).strip("_")[:40]
-    suffix    = "study_plan" if mode == "plan" else "full"
+    suffix    = {"plan": "study_plan", "full": "full", "book": "book"}[mode]
     path      = OUTPUT_DIR / f"{timestamp}-{slug}-{suffix}.md"
 
     fm = frontmatter.rstrip().removesuffix("---")
@@ -611,9 +886,13 @@ def parse_args():
     parser.add_argument("--model", type=str, help="Skip model selection")
     parser.add_argument("--lang",  type=str, default=None, help="Output language code")
     parser.add_argument("--mode",  type=str, choices=MODES, default=None,
-                        help="plan = study plan only | full = plan + material (default: ask)")
+                        help="plan = study plan only | full = plan + material, one pass, fast | "
+                             "book = plan + chained per-topic chapters, slow but resumable "
+                             "(default: ask)")
     parser.add_argument("--skip-assessment", action="store_true",
                         help="skip the learner familiarity assessment")
+    parser.add_argument("--fresh", action="store_true",
+                        help="book mode: discard any in-progress partial run and start over")
     return parser.parse_args()
 
 
@@ -652,19 +931,47 @@ if __name__ == "__main__":
         print("[done]")
         exit(0)
 
-    # call 1 — frontmatter (fast, no stream)
-    frontmatter, topics = generate_frontmatter(raw, model, mode)
-    print(frontmatter)
+    # book mode — check for a resumable in-progress run
+    resumed = False
+    partial_state = None
+    p_path = None
+    if mode == "book":
+        p_path = partial_path(str(input_path), model, lang)
+        if args.fresh and p_path.exists():
+            print("[book] --fresh: discarding previous in-progress run")
+        loaded = None if args.fresh else load_partial(p_path)
+        if loaded and loaded.get("source") == os.path.basename(str(input_path)):
+            n_done  = len(loaded["completed"])
+            n_total = len(loaded["material_topics"])
+            if n_done >= n_total:
+                print(f"[book] found a completed partial run ({n_done}/{n_total}) "
+                      f"that wasn't cleaned up — starting fresh")
+            elif ask_resume(n_done, n_total):
+                partial_state = loaded
+                resumed = True
+            else:
+                print("[book] starting fresh — previous progress will be overwritten")
 
-    # assessment — gauge learner's current proficiency
-    if args.skip_assessment:
-        print("\n[assessment] skipped (--skip-assessment)")
-        assessment_summary = ""
+    if resumed:
+        frontmatter         = partial_state["frontmatter"]
+        assessment_summary  = partial_state["assessment_summary"]
+        plan_body           = partial_state["plan_body"]
+        material_topics     = partial_state["material_topics"]
+        print(frontmatter)
     else:
-        assessment_summary = run_assessment(raw, topics, model)
+        # call 1 — frontmatter (fast, no stream)
+        frontmatter, topics = generate_frontmatter(raw, model, mode)
+        print(frontmatter)
 
-    # call 2 — study plan (streaming)
-    plan_body = generate_plan(raw, lang, model, assessment_summary)
+        # assessment — gauge learner's current proficiency
+        if args.skip_assessment:
+            print("\n[assessment] skipped (--skip-assessment)")
+            assessment_summary = ""
+        else:
+            assessment_summary = run_assessment(raw, topics, model)
+
+        # call 2 — study plan (streaming)
+        plan_body = generate_plan(raw, lang, model, assessment_summary)
 
     sections = []
     if assessment_summary:
@@ -672,12 +979,32 @@ if __name__ == "__main__":
     sections.append(("Study Plan", plan_body))
 
     # call 2b — expand topic list from plan (fast, no stream)
-    # call 3   — study material (streaming, only if full mode)
+    # call 3   — study material (streaming, only if full/book mode)
     if mode == "full":
         expanded = extract_topics_from_plan(plan_body, model)
         material_topics = expanded if expanded else topics
         material_body = generate_material(raw, material_topics, lang, model, assessment_summary)
         sections.append(("Study Material", material_body))
+    elif mode == "book":
+        if not resumed:
+            expanded = extract_topics_from_plan(plan_body, model)
+            material_topics = expanded if expanded else topics
+            partial_state = {
+                "source": os.path.basename(str(input_path)),
+                "model": model,
+                "lang": lang,
+                "frontmatter": frontmatter,
+                "assessment_summary": assessment_summary,
+                "plan_body": plan_body,
+                "material_topics": material_topics,
+                "completed": [],
+            }
+            save_partial(p_path, partial_state)
+        material_body = generate_book_material(
+            raw, material_topics, lang, model, assessment_summary, partial_state, p_path,
+        )
+        sections.append(("Study Material", material_body))
+        delete_partial(p_path)
 
     eject_model(model)
     save_output(frontmatter, sections, str(input_path), model, lang, mode)

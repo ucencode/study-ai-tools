@@ -8,6 +8,9 @@ from pathlib import Path
 
 PRESET_DIR = Path(__file__).parent / "presets"
 
+COLOR_TEAL = "\033[36m"
+COLOR__RESET = "\033[0m"
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -62,8 +65,8 @@ def ask_preset(new_name: str | None = None) -> str:
             entries.append((path, f"[unreadable: {e}]"))
 
     for i, (path, summary) in enumerate(entries, 1):
-        label = f"[NEW!]{path.name}" if path.name == new_name else path.name
-        print(f"  {i}. {label}")
+        name = f"[NEW!]{path.name}" if path.name == new_name else path.name
+        print(f"  {i}. {COLOR_TEAL}{name}{COLOR__RESET}")
         print(f"     {summary}")
 
     choice = input("\n>>> ").strip()

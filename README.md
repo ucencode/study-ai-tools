@@ -73,6 +73,10 @@ python tools/slide-summarizinator/index.py inputs/slides.pdf --preset example.to
 python tools/slide-summarizinator/batch.py --preset example.toml
 ```
 
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--preset` | — | Optional, if its empty you will select one preset or create a new one |
+
 ### Options
 
 | Flag | Default | Description |

@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
 
 import argparse
+import asyncio
+import sys
 from pathlib import Path
 
-from index import (
-    list_models,
-    OCR_MODEL_KEYWORDS,
-    REFINE_MODEL_KEYWORDS,
-    LANG_INSTRUCTION,
-    LANG_EXPERIMENTAL,
-    AUDIENCE_INSTRUCTION,
-)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-PRESET_DIR = Path(__file__).parent / "presets"
+from core import llm                     # noqa: E402
+from core.languages import (             # noqa: E402
+    AUDIENCE_INSTRUCTION,
+    LANG_EXPERIMENTAL,
+    LANG_INSTRUCTION,
+)
+from core.paths import PRESET_DIR        # noqa: E402
+from core.slides import list_refine_models, list_vision_models  # noqa: E402
 
 ACTION_EXPLANATION = {
     "skip": "keeps the raw OCR text as-is, no refine pass runs",
@@ -108,7 +110,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    vision_models = list_models(OCR_MODEL_KEYWORDS)
+    try:
+        vision_models = asyncio.run(list_vision_models())
+    except llm.LLMError as e:
+        print(f"[error] {e}")
+        exit(1)
     if not vision_models:
         print("[error] no vision models found. check OCR_MODEL_KEYWORDS.")
         exit(1)
@@ -118,7 +124,7 @@ def main():
 
     refine_model = None
     if action != "skip":
-        refine_models = list_models(REFINE_MODEL_KEYWORDS)
+        refine_models = asyncio.run(list_refine_models())
         if not refine_models:
             print("[error] no refine models found. check REFINE_MODEL_KEYWORDS.")
             exit(1)

@@ -6,8 +6,12 @@ __pycache__/
 *.pyd
 .Python
 *.egg-info/
-dist/
 build/
+
+# Frontend (dist is a build artifact — rebuild with: cd frontend && npm run build)
+node_modules/
+frontend/dist/
+frontend/.vite/
 
 # IDE
 .vscode/

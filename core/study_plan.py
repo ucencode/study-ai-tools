@@ -11,6 +11,7 @@ from __future__ import annotations
 import math
 import time
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncIterator, Iterable, Sequence
 
 from core import events as ev
@@ -256,6 +257,139 @@ async def _digest_chapter(topic: str, body: str, model: str) -> str:
         return ""
 
 
+# ── mode stages ───────────────────────────────────────────────────────────────
+#
+# One per value of `mode`, past the shared plan stage. Each is an async generator
+# of events that appends its own ("Study Material", body) entry to `sections`.
+
+async def _expand_topics(plan_body: str, topics: Sequence[str], model: str) -> list[str]:
+    """Topics the written plan actually covers, falling back to the curriculum's."""
+    expanded = await extract_topics_from_plan(plan_body, model)
+    return expanded or list(topics)
+
+
+async def _run_full(
+    *,
+    raw: str,
+    topics: Sequence[str],
+    plan_body: str,
+    lang: str,
+    model: str,
+    assessment_summary: str,
+    sections: list[tuple[str, str]],
+) -> AsyncIterator[ev.StreamEvent]:
+    """"full" mode — every topic written in a single streamed pass."""
+    yield ev.status("extracting expanded topic list...", stage="topics")
+    material_topics = await _expand_topics(plan_body, topics, model)
+    yield ev.status(f"{len(material_topics)} topics", stage="topics")
+    yield ev.meta(material_topics=material_topics)
+
+    yield ev.status(f"writing material for {len(material_topics)} topics", stage="material")
+    yield ev.section("material", "Study Material")
+    started = time.time()
+    chunks: list[str] = []
+    async for chunk in _stream_material(raw, material_topics, lang, model, assessment_summary):
+        chunks.append(chunk)
+        yield ev.token(chunk)
+    material_body = "".join(chunks)
+    yield ev.status(
+        f"material done ({time.time() - started:.2f}s, {len(material_body)} chars)",
+        stage="material",
+    )
+    sections.append(("Study Material", material_body))
+
+
+async def _run_book(
+    *,
+    raw: str,
+    topics: Sequence[str],
+    plan_body: str,
+    frontmatter: str,
+    source_name: str,
+    lang: str,
+    model: str,
+    assessment_summary: str,
+    partial_file: Path,
+    partial_state: dict | None,
+    sections: list[tuple[str, str]],
+) -> AsyncIterator[ev.StreamEvent]:
+    """"book" mode — one chained chapter per topic, saved after every chapter.
+
+    `partial_state` is the resumed run's state, or None to start a fresh book.
+    """
+    if partial_state is None:
+        yield ev.status("extracting expanded topic list...", stage="topics")
+        material_topics = await _expand_topics(plan_body, topics, model)
+        yield ev.status(f"{len(material_topics)} chapters to write", stage="topics")
+        yield ev.meta(material_topics=material_topics)
+        partial_state = {
+            "source": source_name,
+            "model": model,
+            "lang": lang,
+            "frontmatter": frontmatter,
+            "assessment_summary": assessment_summary,
+            "plan_body": plan_body,
+            "material_topics": material_topics,
+            "completed": [],
+        }
+        storage.save_partial(partial_file, partial_state)
+    else:
+        material_topics = partial_state["material_topics"]
+
+    completed = partial_state["completed"]
+    total = len(material_topics)
+    durations = [e["duration"] for e in completed if "duration" in e]
+
+    # already-written chapters, replayed so a resumed run still renders whole
+    for i, entry in enumerate(completed, 1):
+        yield ev.section(f"chapter-{i}", f"Chapter {i}/{total}: {entry['topic']}", restored=True)
+        yield ev.token(entry["body"])
+
+    run_start = time.time()
+    for index in range(len(completed) + 1, total + 1):
+        topic = material_topics[index - 1]
+
+        if durations:
+            avg = sum(durations) / len(durations)
+            eta = avg * (total - index + 1)
+            yield ev.status(
+                f"{len(completed)}/{total} done — est. {storage.format_duration(eta)} "
+                f"remaining (avg {storage.format_duration(avg)}/chapter)",
+                stage="book", completed=len(completed), total=total,
+            )
+
+        yield ev.section(f"chapter-{index}", f"Chapter {index}/{total}: {topic}")
+        chapter_start = time.time()
+        chunks: list[str] = []
+        async for chunk in _stream_book_chapter(
+            topic, index, total, material_topics, raw, lang, model,
+            assessment_summary, completed,
+        ):
+            chunks.append(chunk)
+            yield ev.token(chunk)
+        body = "".join(chunks)
+
+        yield ev.status(f'digesting "{topic}" for chaining...', stage="book")
+        digest = await _digest_chapter(topic, body, model)
+
+        duration = time.time() - chapter_start
+        durations.append(duration)
+        completed.append({"topic": topic, "body": body, "digest": digest,
+                          "duration": duration})
+        storage.save_partial(partial_file, partial_state)
+        yield ev.status(
+            f"chapter {index}/{total} done ({storage.format_duration(duration)})",
+            stage="book", completed=len(completed), total=total,
+        )
+
+    yield ev.status(
+        f"all {total} chapters complete ({storage.format_duration(time.time() - run_start)} this session)",
+        stage="book",
+    )
+    sections.append(("Study Material", "\n\n".join(e["body"] for e in completed)))
+    storage.delete_partial(partial_file)
+
+
 # ── the pipeline ──────────────────────────────────────────────────────────────
 
 async def generate(
@@ -299,29 +433,21 @@ async def generate(
     # book mode — pick up an interrupted run rather than paying for it twice
     partial_file = storage.partial_path(source_name, model, lang)
     partial_state: dict | None = None
-    resumed = False
     if mode == "book":
         if fresh:
             storage.delete_partial(partial_file)
         else:
-            loaded = storage.load_partial(partial_file)
-            if loaded and loaded.get("source") == source_name:
-                done_n, total_n = len(loaded["completed"]), len(loaded["material_topics"])
-                if done_n < total_n:
-                    partial_state = loaded
-                    resumed = True
-                    yield ev.status(
-                        f"resuming: {done_n}/{total_n} chapters already written",
-                        stage="book",
-                    )
+            partial_state = storage.load_resumable_partial(partial_file, source_name)
+        if partial_state is not None:
+            done_n, total_n = len(partial_state["completed"]), len(partial_state["material_topics"])
+            yield ev.status(f"resuming: {done_n}/{total_n} chapters already written", stage="book")
 
     try:
-        if resumed and partial_state is not None:
+        if partial_state is not None:
             frontmatter        = partial_state["frontmatter"]
             assessment_summary = partial_state["assessment_summary"]
             plan_body          = partial_state["plan_body"]
-            material_topics    = partial_state["material_topics"]
-            topics             = material_topics
+            topics             = partial_state["material_topics"]
             yield ev.meta(frontmatter=frontmatter, topics=topics, resumed=True)
         else:
             # call 1 — frontmatter (fast, no stream)
@@ -346,106 +472,31 @@ async def generate(
             yield ev.status(
                 f"plan done ({time.time() - started:.2f}s, {len(plan_body)} chars)", stage="plan",
             )
-            material_topics = []
 
         sections: list[tuple[str, str]] = []
         if assessment_summary:
             sections.append(("Learner Assessment", assessment_summary))
         sections.append(("Study Plan", plan_body))
 
+        # the mode-specific stage appends its own material section
         if mode == "full":
-            yield ev.status("extracting expanded topic list...", stage="topics")
-            expanded = await extract_topics_from_plan(plan_body, model)
-            material_topics = expanded or topics
-            yield ev.status(f"{len(material_topics)} topics", stage="topics")
-            yield ev.meta(material_topics=material_topics)
-
-            yield ev.status(f"writing material for {len(material_topics)} topics", stage="material")
-            yield ev.section("material", "Study Material")
-            started = time.time()
-            chunks = []
-            async for chunk in _stream_material(raw, material_topics, lang, model, assessment_summary):
-                chunks.append(chunk)
-                yield ev.token(chunk)
-            material_body = "".join(chunks)
-            yield ev.status(
-                f"material done ({time.time() - started:.2f}s, {len(material_body)} chars)",
-                stage="material",
+            stage = _run_full(
+                raw=raw, topics=topics, plan_body=plan_body, lang=lang, model=model,
+                assessment_summary=assessment_summary, sections=sections,
             )
-            sections.append(("Study Material", material_body))
-
         elif mode == "book":
-            if not resumed:
-                yield ev.status("extracting expanded topic list...", stage="topics")
-                expanded = await extract_topics_from_plan(plan_body, model)
-                material_topics = expanded or topics
-                yield ev.status(f"{len(material_topics)} chapters to write", stage="topics")
-                yield ev.meta(material_topics=material_topics)
-                partial_state = {
-                    "source": source_name,
-                    "model": model,
-                    "lang": lang,
-                    "frontmatter": frontmatter,
-                    "assessment_summary": assessment_summary,
-                    "plan_body": plan_body,
-                    "material_topics": material_topics,
-                    "completed": [],
-                }
-                storage.save_partial(partial_file, partial_state)
-
-            assert partial_state is not None
-            completed = partial_state["completed"]
-            total = len(material_topics)
-            durations = [e["duration"] for e in completed if "duration" in e]
-
-            # already-written chapters, replayed so a resumed run still renders whole
-            for i, entry in enumerate(completed, 1):
-                yield ev.section(f"chapter-{i}", f"Chapter {i}/{total}: {entry['topic']}", restored=True)
-                yield ev.token(entry["body"])
-
-            run_start = time.time()
-            for index in range(len(completed) + 1, total + 1):
-                topic = material_topics[index - 1]
-
-                if durations:
-                    avg = sum(durations) / len(durations)
-                    eta = avg * (total - index + 1)
-                    yield ev.status(
-                        f"{len(completed)}/{total} done — est. {storage.format_duration(eta)} "
-                        f"remaining (avg {storage.format_duration(avg)}/chapter)",
-                        stage="book", completed=len(completed), total=total,
-                    )
-
-                yield ev.section(f"chapter-{index}", f"Chapter {index}/{total}: {topic}")
-                chapter_start = time.time()
-                chunks = []
-                async for chunk in _stream_book_chapter(
-                    topic, index, total, material_topics, raw, lang, model,
-                    assessment_summary, completed,
-                ):
-                    chunks.append(chunk)
-                    yield ev.token(chunk)
-                body = "".join(chunks)
-
-                yield ev.status(f'digesting "{topic}" for chaining...', stage="book")
-                digest = await _digest_chapter(topic, body, model)
-
-                duration = time.time() - chapter_start
-                durations.append(duration)
-                completed.append({"topic": topic, "body": body, "digest": digest,
-                                  "duration": duration})
-                storage.save_partial(partial_file, partial_state)
-                yield ev.status(
-                    f"chapter {index}/{total} done ({storage.format_duration(duration)})",
-                    stage="book", completed=len(completed), total=total,
-                )
-
-            yield ev.status(
-                f"all {total} chapters complete ({storage.format_duration(time.time() - run_start)} this session)",
-                stage="book",
+            stage = _run_book(
+                raw=raw, topics=topics, plan_body=plan_body, frontmatter=frontmatter,
+                source_name=source_name, lang=lang, model=model,
+                assessment_summary=assessment_summary, partial_file=partial_file,
+                partial_state=partial_state, sections=sections,
             )
-            sections.append(("Study Material", "\n\n".join(e["body"] for e in completed)))
-            storage.delete_partial(partial_file)
+        else:  # "plan" — the plan is the whole output
+            stage = None
+
+        if stage is not None:
+            async for event in stage:
+                yield event
 
     except llm.LLMError as e:
         yield ev.error(str(e))

@@ -122,16 +122,25 @@ def delete_partial(path: Path) -> None:
         pass
 
 
-def peek_partial(source_name: str, model: str, lang: str) -> dict | None:
-    """Progress summary for a resumable book run, or None when there isn't one."""
-    path = partial_path(source_name, model, lang)
+def load_resumable_partial(path: Path, source_name: str) -> dict | None:
+    """A saved book run for this source that still has chapters left to write."""
     state = load_partial(path)
     if not state or state.get("source") != source_name:
         return None
-    done, total = len(state.get("completed", [])), len(state.get("material_topics", []))
-    if done >= total:  # finished but never cleaned up — not resumable
+    if len(state.get("completed", [])) >= len(state.get("material_topics", [])):
+        return None  # finished but never cleaned up — not resumable
+    return state
+
+
+def peek_partial(source_name: str, model: str, lang: str) -> dict | None:
+    """Progress summary for a resumable book run, or None when there isn't one."""
+    path = partial_path(source_name, model, lang)
+    state = load_resumable_partial(path, source_name)
+    if not state:
         return None
-    return {"path": str(path), "completed": done, "total": total}
+    return {"path": str(path),
+            "completed": len(state["completed"]),
+            "total": len(state["material_topics"])}
 
 
 # ── slide pipeline output ─────────────────────────────────────────────────────

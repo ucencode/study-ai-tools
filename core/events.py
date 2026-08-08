@@ -23,6 +23,7 @@ TOKEN   = "token"     # a chunk of generated text: {"text": str}
 META    = "meta"      # structured payload (frontmatter, topic list, ...)
 DONE    = "done"      # pipeline finished: {"path": str, ...}
 ERROR   = "error"     # pipeline aborted: {"message": str}
+JOB     = "job"       # job record snapshot: {"id": str, "status": str, ...}
 
 
 @dataclass(slots=True)
@@ -62,3 +63,13 @@ def done(**data: Any) -> StreamEvent:
 
 def error(message: str, **extra: Any) -> StreamEvent:
     return StreamEvent(ERROR, {"message": message, **extra})
+
+
+def job(record: dict) -> StreamEvent:
+    """A job record snapshot.
+
+    Emitted by the job layer, never by a pipeline. Clients read `status` from it
+    to know whether a run is queued, live, or finished — a terminal one is the
+    last frame an attached client sees.
+    """
+    return StreamEvent(JOB, dict(record))

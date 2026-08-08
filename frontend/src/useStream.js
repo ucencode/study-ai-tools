@@ -1,20 +1,29 @@
-import { useCallback, useRef, useState } from "react";
-import { streamSSE } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { cancelJob, streamJob, submitJob } from "./api";
 
 /**
- * Consume a pipeline SSE stream into render-ready state.
+ * Watch a background job and turn its event stream into render-ready state.
+ *
+ * A job outlives whoever is watching it, so this hook is a *spectator*: `start`
+ * submits and attaches, `attach` re-attaches to an existing job (replaying it
+ * from the beginning so a reloaded tab renders the whole document), `detach`
+ * stops watching, and only `stop` actually kills the run.
  *
  * Tokens arrive faster than React should re-render, so they're accumulated in a
  * ref and flushed once per animation frame. That keeps the typing effect smooth
  * on long generations instead of queueing thousands of renders.
  */
+
+const TERMINAL = new Set(["done", "error", "cancelled", "interrupted"]);
+
 export function useStream() {
   const [sections, setSections] = useState([]);
   const [statuses, setStatuses] = useState([]);
-  const [status, setStatus] = useState("idle"); // idle | running | done | error
+  const [status, setStatus] = useState("idle"); // idle | queued | running | done | error | cancelled | interrupted
   const [error, setError] = useState(null);
   const [results, setResults] = useState([]);
   const [progress, setProgress] = useState(null);
+  const [jobId, setJobId] = useState(null);
 
   const abortRef = useRef(null);
   const pendingRef = useRef("");
@@ -58,6 +67,7 @@ export function useStream() {
     setProgress(null);
     setError(null);
     setStatus("idle");
+    setJobId(null);
   }, [flushNow]);
 
   const handleEvent = useCallback(
@@ -93,7 +103,15 @@ export function useStream() {
         case "error":
           flushNow();
           setError(data.message ?? "generation failed");
-          setStatus("error");
+          break;
+
+        // the job record — the authority on what state the run is in
+        case "job":
+          flushNow();
+          setJobId(data.id);
+          setStatus(data.status);
+          if (data.error) setError(data.error);
+          if (data.progress) setProgress(data.progress);
           break;
 
         default:
@@ -103,36 +121,74 @@ export function useStream() {
     [flushNow, scheduleFlush],
   );
 
-  const start = useCallback(
-    async (path, body) => {
+  /** Follow an existing job from `from`, replaying what it has already produced. */
+  const attach = useCallback(
+    async (id, { from = 0 } = {}) => {
+      abortRef.current?.abort();
       reset();
+      setJobId(id);
+      setStatus("queued"); // the first `job` frame corrects this a round trip later
+
       const controller = new AbortController();
       abortRef.current = controller;
-      setStatus("running");
 
-      let failed = false;
       try {
-        await streamSSE(path, { body, signal: controller.signal, onEvent: handleEvent });
+        await streamJob(id, { from, signal: controller.signal, onEvent: handleEvent });
       } catch (e) {
-        if (e.name === "AbortError") {
-          flushNow();
-          setStatus("idle");
-          return;
-        }
-        failed = true;
+        if (e.name === "AbortError") return; // detached on purpose
         setError(e.message);
         setStatus("error");
       } finally {
-        abortRef.current = null;
+        if (abortRef.current === controller) abortRef.current = null;
         flushNow();
       }
-      // an `error` frame already moved us to "error"; don't overwrite it
-      if (!failed) setStatus((prev) => (prev === "error" ? prev : "done"));
     },
     [flushNow, handleEvent, reset],
   );
 
-  const stop = useCallback(() => abortRef.current?.abort(), []);
+  /** Submit a new job, then watch it. Returns the job id. */
+  const start = useCallback(
+    async (path, body) => {
+      abortRef.current?.abort();
+      reset();
+      setStatus("queued");
+      let job;
+      try {
+        job = await submitJob(path, body);
+      } catch (e) {
+        setError(e.message);
+        setStatus("error");
+        return null;
+      }
+      void attach(job.id); // deliberately not awaited — the caller wants the id now
+      return job.id;
+    },
+    [attach, reset],
+  );
 
-  return { sections, statuses, status, error, results, progress, start, stop, reset };
+  /** Stop watching. The job keeps running and can be reattached. */
+  const detach = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  /** Actually kill the run. */
+  const stop = useCallback(async () => {
+    if (!jobId) return;
+    try {
+      await cancelJob(jobId);
+    } catch (e) {
+      setError(e.message);
+    }
+  }, [jobId]);
+
+  // never leave a reader open behind an unmounting panel
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const active = status !== "idle" && !TERMINAL.has(status);
+
+  return { sections, statuses, status, error, results, progress, jobId, active,
+           start, attach, detach, stop, reset };
 }
+
+export { TERMINAL as TERMINAL_STATUSES };

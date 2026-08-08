@@ -1,7 +1,8 @@
 /**
- * API client. Generation endpoints are POST + Server-Sent Events, so they're
- * read with fetch + a ReadableStream reader rather than `EventSource` (which
- * can only issue GETs and couldn't carry a whole curriculum in the body).
+ * API client. Generation is job-based: POST a job, then watch it over Server-Sent
+ * Events. The event stream is read with fetch + a ReadableStream reader rather
+ * than `EventSource`, so the same parser serves it and the request can be
+ * aborted (detached) without ceremony.
  */
 
 async function request(path, options = {}) {
@@ -16,7 +17,7 @@ async function request(path, options = {}) {
     }
     throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-  return res.json();
+  return res.status === 204 ? null : res.json();
 }
 
 export const getHealth = () => request("/api/health");
@@ -43,6 +44,26 @@ export function uploadPdf(file) {
   return request("/api/slides/upload", { method: "POST", body: form });
 }
 
+// ── jobs ─────────────────────────────────────────────────────────────────────
+
+export const submitJob = (path, body) => postJSON(path, body);
+export const listJobs = (tool) =>
+  request(`/api/jobs${tool ? `?tool=${encodeURIComponent(tool)}` : ""}`);
+export const getJob = (id) => request(`/api/jobs/${encodeURIComponent(id)}`);
+export const cancelJob = (id) =>
+  request(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" });
+export const deleteJob = (id) =>
+  request(`/api/jobs/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+/** Watch a job: replays from `from`, then follows it live until it ends. */
+export function streamJob(id, { from = 0, signal, onEvent }) {
+  return streamSSE(`/api/jobs/${encodeURIComponent(id)}/events?from=${from}`, {
+    method: "GET",
+    signal,
+    onEvent,
+  });
+}
+
 /** Parse one SSE frame into `{ type, data }`, or null for comments/blanks. */
 function parseFrame(frame) {
   let type = "message";
@@ -61,14 +82,17 @@ function parseFrame(frame) {
 }
 
 /**
- * POST `body` to `path` and invoke `onEvent` for every SSE frame as it lands.
+ * Open the SSE stream at `path` and invoke `onEvent` for every frame as it lands.
  * Resolves once the server closes the stream.
  */
-export async function streamSSE(path, { body, signal, onEvent }) {
+export async function streamSSE(path, { method = "POST", body, signal, onEvent }) {
+  const headers = { Accept: "text/event-stream" };
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+
   const res = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body),
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
     signal,
   });
 

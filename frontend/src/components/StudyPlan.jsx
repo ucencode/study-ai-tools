@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { postJSON } from "../api";
 import { useStream } from "../useStream";
+import { useLastJob } from "../useLastJob";
 import StreamPanel from "./StreamPanel";
 
 const MODE_HINT = {
@@ -25,7 +26,8 @@ export default function StudyPlan({ config, models }) {
   const [partial, setPartial] = useState(null);
 
   const stream = useStream();
-  const running = stream.status === "running";
+  const rememberJob = useLastJob("study-plan", stream);
+  const running = stream.active;
   const fileRef = useRef(null);
 
   useEffect(() => {
@@ -75,8 +77,8 @@ export default function StudyPlan({ config, models }) {
     }
   }
 
-  function generate(fresh = false) {
-    stream.start("/api/study-plan/stream", {
+  async function generate(fresh = false) {
+    const id = await stream.start("/api/study-plan/jobs", {
       curriculum,
       model,
       lang,
@@ -87,6 +89,7 @@ export default function StudyPlan({ config, models }) {
       use_cache: useCache,
       fresh,
     });
+    rememberJob(id);
   }
 
   const ready = curriculum.trim().length > 0 && model;
@@ -201,6 +204,11 @@ export default function StudyPlan({ config, models }) {
                   onClick={() => generate(false)}>
             {running ? "Generating…" : "Generate"}
           </button>
+          {running && (
+            <span className="hint">
+              Queued on the server — closing this tab won’t stop it.
+            </span>
+          )}
           {mode === "book" && partial && (
             <button type="button" className="ghost" disabled={running}
                     onClick={() => generate(true)}>

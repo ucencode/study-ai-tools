@@ -24,8 +24,18 @@ function useStickyScroll(dep) {
   return ref;
 }
 
+const STATUS_LABEL = {
+  idle: "Idle",
+  queued: "Queued",
+  running: "Generating",
+  done: "Finished",
+  error: "Failed",
+  cancelled: "Cancelled",
+  interrupted: "Interrupted",
+};
+
 export default function StreamPanel({ stream, emptyHint }) {
-  const { sections, statuses, status, error, results, progress } = stream;
+  const { sections, statuses, status, error, results, progress, active } = stream;
   const [showLog, setShowLog] = useState(true);
 
   const total = sections.reduce((n, s) => n + s.text.length, 0);
@@ -38,10 +48,7 @@ export default function StreamPanel({ stream, emptyHint }) {
       <header className="stream-head">
         <div className="stream-title">
           <span className={`dot dot-${status}`} aria-hidden="true" />
-          <strong>
-            {status === "running" ? "Generating" : status === "done" ? "Finished"
-              : status === "error" ? "Failed" : "Idle"}
-          </strong>
+          <strong>{STATUS_LABEL[status] ?? status}</strong>
           {total > 0 && <span className="muted"> · {total.toLocaleString()} chars</span>}
         </div>
         <div className="stream-actions">
@@ -52,10 +59,16 @@ export default function StreamPanel({ stream, emptyHint }) {
               <span className="progress-label">{progress.completed}/{progress.total}</span>
             </span>
           )}
-          {status === "running" && (
-            <button type="button" className="ghost" onClick={stream.stop}>Stop</button>
+          {active && (
+            <>
+              <button type="button" className="ghost" onClick={stream.detach}
+                      title="Stop watching — the job keeps running">
+                Detach
+              </button>
+              <button type="button" className="ghost" onClick={stream.stop}>Stop</button>
+            </>
           )}
-          {status !== "running" && sections.length > 0 && (
+          {!active && sections.length > 0 && (
             <button type="button" className="ghost" onClick={stream.reset}>Clear</button>
           )}
         </div>
@@ -75,7 +88,7 @@ export default function StreamPanel({ stream, emptyHint }) {
             </h3>
             <pre>
               {section.text}
-              {status === "running" && i === sections.length - 1 && <span className="caret" />}
+              {active && i === sections.length - 1 && <span className="caret" />}
             </pre>
           </article>
         ))}

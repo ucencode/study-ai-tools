@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getConfig, getHealth, getModels } from "./api";
+import Jobs from "./components/Jobs";
 import Outputs from "./components/Outputs";
 import Slides from "./components/Slides";
 import StudyPlan from "./components/StudyPlan";
@@ -7,6 +8,7 @@ import StudyPlan from "./components/StudyPlan";
 const TABS = [
   { id: "plan", label: "Study Plan" },
   { id: "slides", label: "Slides" },
+  { id: "jobs", label: "Jobs" },
   { id: "outputs", label: "Outputs" },
 ];
 
@@ -75,6 +77,7 @@ export default function App() {
 
         {config && tab === "plan" && <StudyPlan config={config} models={models} />}
         {config && tab === "slides" && <Slides config={config} models={models} />}
+        {config && tab === "jobs" && <Jobs />}
         {config && tab === "outputs" && <Outputs />}
       </main>
     </div>

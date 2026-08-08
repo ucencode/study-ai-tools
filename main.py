@@ -3,18 +3,23 @@
 
     uvicorn main:app --reload
 
-Every generation endpoint is a Server-Sent Events stream: the async generators
-in `core/` are rendered frame by frame through `StreamingResponse`, so tokens
-reach the browser as the local model produces them.
+Generation is job-based: a POST to a `/jobs` endpoint queues the run and returns
+an id, a background worker executes it, and clients watch through the
+Server-Sent Events stream at `/api/jobs/{id}/events`. Watching is detachable —
+closing the tab abandons the view, not the run.
+
+Because the job registry lives in this process, the server must run a *single*
+worker. `--reload` restarting mid-run marks the in-flight job `interrupted`.
 """
 
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException, UploadFile
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,11 +27,26 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core import events as ev
-from core import llm, slides, storage, study_plan
+from core import jobs, llm, slides, storage, study_plan
 from core.languages import audience_options, language_options
 from core.paths import FRONTEND_DIST, INPUT_DIR
 
-app = FastAPI(title="study-ai-tools", version="1.0.0")
+STUDY_PLAN_TOOL = "study-plan-generatinator"
+SLIDES_TOOL = "slide-summarizinator"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    jobs.register(STUDY_PLAN_TOOL, _study_plan_pipeline)
+    jobs.register(SLIDES_TOOL, _slides_pipeline)
+    await jobs.startup()
+    try:
+        yield
+    finally:
+        await jobs.shutdown()
+
+
+app = FastAPI(title="study-ai-tools", version="1.0.0", lifespan=lifespan)
 
 # Only needed when running the Vite dev server on :5173 against this backend.
 # In the unified build the UI is same-origin and this never comes into play.
@@ -53,13 +73,14 @@ SSE_HEADERS = {
 
 
 async def _to_sse(source: AsyncIterator[ev.StreamEvent]) -> AsyncIterator[str]:
-    """Render a pipeline as SSE frames, turning a crash into an `error` event."""
+    """Render an event source as SSE frames, turning a crash into an `error` event."""
     yield ": stream open\n\n"  # flushes headers so the browser starts reading
     try:
         async for event in source:
             yield event.to_sse()
     except asyncio.CancelledError:
-        # client navigated away; book mode has already checkpointed its progress
+        # the client navigated away — this only abandons the view; the job keeps
+        # running under the worker and can be reattached later
         raise
     except Exception as e:
         yield ev.error(f"{type(e).__name__}: {e}").to_sse()
@@ -175,21 +196,30 @@ async def study_plan_partial(source_name: str, model: str, lang: str) -> dict:
     return {"partial": storage.peek_partial(source_name, model, lang)}
 
 
-@api.post("/study-plan/stream")
-async def study_plan_stream(body: StudyPlanRequest) -> StreamingResponse:
+@api.post("/study-plan/jobs", status_code=202)
+async def study_plan_job(body: StudyPlanRequest) -> dict:
+    """Queue a curriculum run. Watch it at /api/jobs/{id}/events."""
     known_ids = [a.id for a in body.answers if a.known]
     summary = study_plan.summarize_assessment(body.questions, known_ids) if body.questions else ""
 
-    return sse_response(study_plan.generate(
-        raw=body.curriculum.strip(),
-        source_name=body.source_name,
-        model=body.model,
-        lang=body.lang,
-        mode=body.mode,
-        assessment_summary=summary,
-        use_cache=body.use_cache,
-        fresh=body.fresh,
-    ))
+    return jobs.submit(
+        STUDY_PLAN_TOOL,
+        {
+            "raw": body.curriculum.strip(),
+            "source_name": body.source_name,
+            "model": body.model,
+            "lang": body.lang,
+            "mode": body.mode,
+            "assessment_summary": summary,
+            "use_cache": body.use_cache,
+            "fresh": body.fresh,
+        },
+        label=f"{body.source_name} · {body.mode} · {body.model}",
+    )
+
+
+def _study_plan_pipeline(params: dict) -> AsyncIterator[ev.StreamEvent]:
+    return study_plan.generate(**params)
 
 
 # ── slides ────────────────────────────────────────────────────────────────────
@@ -224,23 +254,34 @@ async def slides_upload(file: UploadFile) -> dict:
     return {"name": target.name, "size": size}
 
 
-@api.post("/slides/stream")
-async def slides_stream(body: SlidesRequest) -> StreamingResponse:
+@api.post("/slides/jobs", status_code=202)
+async def slides_job(body: SlidesRequest) -> dict:
+    """Queue a PDF run. Watch it at /api/jobs/{id}/events."""
     try:
-        pdf_path = _resolve_input(body.file)
+        _resolve_input(body.file)  # fail loudly now rather than inside the worker
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
-    return sse_response(slides.generate(
-        pdf_path=pdf_path,
-        ocr_model=body.ocr_model,
-        action=body.action,
-        refine_model=body.refine_model,
-        lang=body.lang,
-        level=body.level,
-        dpi=body.dpi,
-        use_cache=body.use_cache,
-    ))
+    return jobs.submit(
+        SLIDES_TOOL,
+        {
+            "file": body.file,
+            "ocr_model": body.ocr_model,
+            "action": body.action,
+            "refine_model": body.refine_model,
+            "lang": body.lang,
+            "level": body.level,
+            "dpi": body.dpi,
+            "use_cache": body.use_cache,
+        },
+        label=f"{body.file} · {body.action} · {body.ocr_model}",
+    )
+
+
+def _slides_pipeline(params: dict) -> AsyncIterator[ev.StreamEvent]:
+    # stored as a bare filename so the record stays JSON-serializable
+    params = dict(params)
+    return slides.generate(pdf_path=_resolve_input(params.pop("file")), **params)
 
 
 def _resolve_input(name: str) -> Path:
@@ -249,6 +290,51 @@ def _resolve_input(name: str) -> Path:
     if path.parent != INPUT_DIR.resolve() or not path.is_file():
         raise FileNotFoundError(f"no such input file: {name}")
     return path
+
+
+# ── jobs ──────────────────────────────────────────────────────────────────────
+
+@api.get("/jobs")
+async def jobs_list(tool: str | None = None) -> dict:
+    return {"jobs": jobs.listing(tool)}
+
+
+@api.get("/jobs/{job_id}")
+async def job_detail(job_id: str) -> dict:
+    record = jobs.get(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"no such job: {job_id}")
+    return record
+
+
+@api.get("/jobs/{job_id}/events")
+async def job_events(job_id: str, from_: int = Query(0, alias="from")) -> StreamingResponse:
+    """Replay this job's events from `from`, then follow it live until it ends.
+
+    Detaching is free: the run belongs to the worker, not to this request.
+    """
+    if jobs.get(job_id) is None:
+        raise HTTPException(status_code=404, detail=f"no such job: {job_id}")
+    return sse_response(jobs.stream(job_id, max(0, from_)))
+
+
+@api.post("/jobs/{job_id}/cancel")
+async def job_cancel(job_id: str) -> dict:
+    try:
+        return jobs.cancel(job_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"no such job: {job_id}") from e
+
+
+@api.delete("/jobs/{job_id}", status_code=204)
+async def job_delete(job_id: str) -> Response:
+    try:
+        jobs.delete(job_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=f"no such job: {job_id}") from e
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    return Response(status_code=204)
 
 
 # ── outputs ───────────────────────────────────────────────────────────────────

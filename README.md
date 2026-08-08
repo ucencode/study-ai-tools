@@ -8,9 +8,10 @@ Runs as a **local web app** (FastAPI + React) or straight from the **terminal** 
 
 ```
 study-ai-tools/
-├── main.py               # FastAPI app: SSE API + serves the built React UI at /
+├── main.py               # FastAPI app: job + SSE API, serves the built React UI at /
 ├── core/                 # the AI pipelines — async generators, no UI assumptions
 │   ├── events.py         # StreamEvent + SSE framing
+│   ├── jobs.py           # background job queue, event log, attach/replay
 │   ├── llm.py            # async Ollama client
 │   ├── languages.py      # language / audience vocabulary
 │   ├── prompts_*.py      # system + user prompts
@@ -20,6 +21,7 @@ study-ai-tools/
 ├── frontend/             # Vite + React UI (build output in frontend/dist)
 ├── inputs/               # drop PDF and curriculum .txt files here
 ├── outputs/
+│   ├── .jobs/                     # job records + event logs (replayable)
 │   ├── slide-summarizinator/      # raw + compiled OCR outputs
 │   └── study-plan-generatinator/  # generated study plans and materials
 ├── tools/                # CLI front-ends over core/
@@ -62,15 +64,33 @@ source venv/bin/activate
 uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Open <http://127.0.0.1:8000>. The three tabs map to the two tools plus a browser for everything you've generated:
+Open <http://127.0.0.1:8000>. The four tabs map to the two tools plus a job monitor and a browser for everything you've generated:
 
 | Tab | What it does |
 |-----|--------------|
-| Study Plan | Paste or load a curriculum, optionally answer a familiarity check, stream a plan / material / book |
+| Study Plan | Paste or load a curriculum, optionally answer a familiarity check, run a plan / material / book |
 | Slides | Upload a PDF, pick a vision model and refine mode, watch pages transcribe and the document stream in |
+| Jobs | Everything that has run: status, progress, output links; attach to one to watch it, or cancel it |
 | Outputs | Read and download every file the tools have written |
 
 Output still lands in `outputs/`, exactly as the CLIs write it — the web UI is another way in, not a separate store.
+
+### Runs are jobs, not requests
+
+Hitting Generate queues a job on the server and returns immediately. The run belongs to a
+background worker, so **closing the tab, reloading, or losing the connection does not stop
+it** — reopening the page reattaches to the job and replays its output from the beginning.
+
+- **One at a time.** Jobs run FIFO. There is one Ollama and one GPU, so a second submission
+  waits its turn rather than fighting for VRAM.
+- **Everything is on disk.** Each job keeps a record and a full event log in `outputs/.jobs/`,
+  which is what makes replay and post-hoc inspection work. The newest 50 finished jobs are
+  kept; older ones are pruned at startup.
+- **Stop means stop.** Detaching stops watching; only Stop/Cancel ends the run. A cancelled
+  book run keeps its chapter checkpoint, so resubmitting it resumes.
+- **Restarting the server** marks any in-flight job `interrupted` — including when `--reload`
+  fires. Run a *single* worker: the job registry lives in the process, so `--workers 2` would
+  leave half your jobs invisible.
 
 ### Working on the UI
 
@@ -85,7 +105,7 @@ Rebuild (`npm run build`) when you're done, so the single-server setup picks the
 
 ### API
 
-Generation endpoints stream [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). They're `POST` (the request bodies carry whole curricula), so the frontend reads them with `fetch` + a `ReadableStream` reader rather than `EventSource`.
+Submit a job, then watch it. Watching is a [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events) stream you may open, close and reopen at will.
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
@@ -94,12 +114,25 @@ Generation endpoints stream [Server-Sent Events](https://developer.mozilla.org/e
 | `GET` | `/api/models` | Installed models, split by role |
 | `POST` | `/api/study-plan/assessment` | Familiarity questions for a curriculum |
 | `GET` | `/api/study-plan/partial` | Whether an interrupted book run can resume |
-| `POST` | `/api/study-plan/stream` | **SSE** — plan / material / book |
+| `POST` | `/api/study-plan/jobs` | Queue a plan / material / book run → `202` + job record |
 | `GET` | `/api/slides/inputs` | PDFs available in `inputs/` |
 | `POST` | `/api/slides/upload` | Upload a PDF into `inputs/` |
-| `POST` | `/api/slides/stream` | **SSE** — OCR and refine |
+| `POST` | `/api/slides/jobs` | Queue an OCR + refine run → `202` + job record |
+| `GET` | `/api/jobs` | Every job, newest first (`?tool=` to filter) |
+| `GET` | `/api/jobs/{id}` | One job record |
+| `GET` | `/api/jobs/{id}/events` | **SSE** — replay from `?from=N`, then follow live |
+| `POST` | `/api/jobs/{id}/cancel` | Stop a queued or running job |
+| `DELETE` | `/api/jobs/{id}` | Forget a finished job and its event log |
 | `GET` | `/api/outputs` | Every generated file with its frontmatter |
 | `GET` | `/api/outputs/{tool}/{name}` | Read one (`?download=true` to save it) |
+
+Watching a job from the shell:
+
+```bash
+ID=$(curl -s localhost:8000/api/study-plan/jobs -H 'Content-Type: application/json' \
+       -d '{"curriculum":"…","model":"qwen3:8b","mode":"book"}' | jq -r .id)
+curl -N "localhost:8000/api/jobs/$ID/events?from=0"
+```
 
 Each SSE frame is a named event with a JSON payload:
 
@@ -110,6 +143,7 @@ data: {"text": "…the next chunk of generated text…"}
 
 | Event | Payload |
 |-------|---------|
+| `job` | the job record — `{id, status, progress, results, …}`; a terminal one ends the stream |
 | `status` | `{stage, message, …}` — progress, the same lines the CLI prints |
 | `section` | `{key, label}` — a new output section begins (plan, chapter 3/12, …) |
 | `token` | `{text}` — generated text, emitted as the model produces it |
@@ -117,7 +151,8 @@ data: {"text": "…the next chunk of generated text…"}
 | `done` | `{path, name, tool, …}` — a file was written |
 | `error` | `{message}` — the run stopped |
 
-Interactive docs are at `/docs` while the server is running.
+Every event but `job` is replayed from the log, so `?from=0` on a finished job returns the
+complete run. Interactive docs are at `/docs` while the server is running.
 
 ---
 

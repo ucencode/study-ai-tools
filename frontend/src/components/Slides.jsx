@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getInputs, uploadPdf } from "../api";
 import { useStream } from "../useStream";
+import { useLastJob } from "../useLastJob";
 import StreamPanel from "./StreamPanel";
 
 export default function Slides({ config, models }) {
@@ -18,7 +19,8 @@ export default function Slides({ config, models }) {
   const [dragging, setDragging] = useState(false);
 
   const stream = useStream();
-  const running = stream.status === "running";
+  const rememberJob = useLastJob("slides", stream);
+  const running = stream.active;
   const fileRef = useRef(null);
 
   useEffect(() => { refreshFiles(); }, []);
@@ -58,8 +60,8 @@ export default function Slides({ config, models }) {
     upload(event.dataTransfer.files?.[0]);
   }
 
-  function generate() {
-    stream.start("/api/slides/stream", {
+  async function generate() {
+    const id = await stream.start("/api/slides/jobs", {
       file,
       ocr_model: ocrModel,
       action,
@@ -69,6 +71,7 @@ export default function Slides({ config, models }) {
       dpi: Number(dpi),
       use_cache: useCache,
     });
+    rememberJob(id);
   }
 
   const needsRefineModel = action !== "skip";
@@ -192,6 +195,11 @@ export default function Slides({ config, models }) {
           <button type="button" className="ghost" disabled={running} onClick={() => refreshFiles()}>
             Refresh files
           </button>
+          {running && (
+            <span className="hint">
+              Queued on the server — closing this tab won’t stop it.
+            </span>
+          )}
         </div>
       </section>
 

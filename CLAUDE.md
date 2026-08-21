@@ -23,7 +23,9 @@ propose the dumber version first.
 
 ```
 main.py              FastAPI app + lifespan (starts/stops the worker)
-config/models.toml   model → roles + local/cloud
+config/
+  model_default.toml model → roles + local/cloud; the checked-in default, kept minimal
+  models.toml        your list, gitignored — expand it here; used whenever it exists
 app/
   models/            Pydantic records (job schema, params, results)
   repositories/      job.json persistence — generic JobRepository[T] + two thin subclasses

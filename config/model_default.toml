@@ -1,0 +1,20 @@
+# Which models can play which role.
+#
+# This is the checked-in default, kept minimal on purpose. **Expand your own list in
+# config/models.toml**, which is gitignored — copy this file there and add entries as
+# you pull models. models.toml is used whenever it exists; this file is the fallback,
+# so a fresh clone still has one working entry.
+#
+# Ollama ships new models constantly and this list goes stale fast — add new entries
+# as you pull them. Nothing here is a whitelist: any model Ollama already has works
+# even if it is not listed, it just shows up as "unlisted" with no role hints.
+#
+#   roles  vision = OCR of page images | refine = clean up / rewrite OCR text
+#          llm    = curriculum plans and study material
+#   where  local  = runs on this machine | cloud = Ollama Cloud, needs a signed-in ollama
+
+[[models]]
+name = "gemma4:31b-cloud"
+roles = ["vision", "refine", "llm"]
+where = "cloud"
+

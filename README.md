@@ -102,7 +102,13 @@ of the document without skipping it.
 ## Models
 
 `config/models.toml` maps model names to roles (`vision`, `refine`, `llm`) and `local`/`cloud`.
-It goes stale as Ollama ships new models — add entries as you pull them.
+**That file is yours and is gitignored — expand it as you pull models.** The checked-in
+`config/model_default.toml` is the starting point and is used when you have not written a
+`models.toml` yet; copy it across to begin:
+
+```sh
+cp config/model_default.toml config/models.toml
+```
 
 An unlisted model is still usable if you name it explicitly, but it is not *suggested* for any
 role: unknown capability is not the same as supporting everything, and offering a text-only

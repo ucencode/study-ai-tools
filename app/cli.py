@@ -85,8 +85,17 @@ async def resume(args, service, command: str):
     global _active
     if not args.resume:
         return False
-    if service.get(args.resume) is None:
+    job = service.get(args.resume)
+    if job is None:
         raise SystemExit(f"[error] no such job: {args.resume}")
+    if job.status in ("queued", "processing"):
+        # Mirrors the API's retry guard. Not a lock — it cannot close the window
+        # between this check and run() — but it catches the case that actually
+        # happens: resuming from a terminal while the server is working on the job.
+        raise SystemExit(
+            f"[error] job {args.resume} is {job.status}. If the API server is running "
+            f"it, wait for it to finish — two writers in one job directory corrupt it."
+        )
     _active = (command, args.resume, "")
     print(f"[job] {args.resume} — resuming ({service.repository.job_dir(args.resume)})")
     report(await service.run(args.resume), service)

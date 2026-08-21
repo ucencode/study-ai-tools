@@ -1,11 +1,16 @@
+import logging
 import secrets
 import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Generic, TypeVar
 
+from pydantic import ValidationError
+
 from app.core.paths import JOBS_DIR
 from app.models._job import Job, JobProgress, JobStatus, now
+
+logger = logging.getLogger(__name__)
 
 JobT = TypeVar("JobT", bound=Job)
 
@@ -54,8 +59,12 @@ class JobRepository(Generic[JobT]):
         for path in self.directory.glob("*/job.json"):
             try:
                 jobs.append(self.model.model_validate_json(path.read_text(encoding="utf-8")))
-            except Exception:
-                continue  # half-written record from a hard kill — skip, don't crash the listing
+            except FileNotFoundError:
+                continue  # deleted between the glob and the read
+            except ValidationError as e:
+                # A record that no longer matches the schema is skipped so one bad job
+                # cannot break the listing — but silence would make it simply vanish.
+                logger.warning("skipping unreadable job record %s: %s", path, e)
         return sorted(jobs, key=lambda job: job.created_at, reverse=True)
 
     def select_by_id(self, id: str) -> JobT | None:
@@ -91,8 +100,13 @@ class JobRepository(Generic[JobT]):
         job.status = status
         # A retry starts clean — a stale error on a completed job reads as a failure.
         job.error = error
-        if status == "processing" and job.started_at is None:
+        # started_at/finished_at describe the *current* attempt, so a retry clears the
+        # previous one's — a job that is processing must not carry a finish time.
+        if status == "queued":
+            job.finished_at = None
+        if status == "processing":
             job.started_at = now()
+            job.finished_at = None
         if status in ("completed", "failed"):
             job.finished_at = now()
             job.progress = None

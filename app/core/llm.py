@@ -29,8 +29,12 @@ def client() -> AsyncClient:
     return _client
 
 
+# Ollama names cloud models both ways, e.g. gpt-oss:120b-cloud and gemma4:cloud.
+CLOUD_SUFFIXES = ("-cloud", ":cloud")
+
+
 def is_cloud(model: str) -> bool:
-    return model.endswith("-cloud")
+    return model.endswith(CLOUD_SUFFIXES)
 
 
 async def list_models(keywords: Sequence[str] | None = None) -> list[str]:

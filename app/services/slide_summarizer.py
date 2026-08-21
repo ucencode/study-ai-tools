@@ -72,17 +72,30 @@ class SlideSummarizerService:
         job_dir.mkdir(parents=True, exist_ok=True)
 
         input_name = f"input.{params.source_format}"
-        target = job_dir / input_name
-        if isinstance(source, bytes):
-            target.write_bytes(source)
-        else:
-            shutil.copyfile(source, target)
-
-        params = params.model_copy(update={"source_sha256": _sha256(target)})
+        digest = self._store_input(source, job_dir / input_name)
+        params = params.model_copy(update={"source_sha256": digest})
 
         return self.repository.create(
             SlideSummarizerJob(id=job_id, input_path=input_name, params=params)
         )
+
+    @staticmethod
+    def _store_input(source: Path | bytes, target: Path) -> str:
+        """Write the input into the job directory, hashing it on the way through.
+
+        One pass: the digest is what the OCR cache keys on, and re-reading a 200 MB
+        deck just to compute it afterwards is pure waste.
+        """
+        digest = hashlib.sha256()
+        if isinstance(source, bytes):
+            digest.update(source)
+            target.write_bytes(source)
+        else:
+            with Path(source).open("rb") as src, target.open("wb") as out:
+                while block := src.read(1024 * 1024):
+                    digest.update(block)
+                    out.write(block)
+        return digest.hexdigest()
 
     # ── the pipeline ─────────────────────────────────────────────────────────
 
@@ -241,11 +254,3 @@ class SlideSummarizerService:
 
         self.repository.set_progress(job_id, "refine", 1, 1)
         return "".join(chunks)
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as file:
-        while block := file.read(1024 * 1024):
-            digest.update(block)
-    return digest.hexdigest()

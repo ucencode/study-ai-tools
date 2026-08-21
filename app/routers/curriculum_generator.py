@@ -97,7 +97,12 @@ async def get_output(job_id: str) -> dict:
 
 @router.delete("/jobs/{job_id}", status_code=204)
 async def delete_job(job_id: str) -> Response:
-    if service.get(job_id) is None:
+    job = service.get(job_id)
+    if job is None:
         raise HTTPException(404, f"no such job: {job_id}")
+    if job.status in ("queued", "processing"):
+        # There is deliberately no cancel, so the only safe answer is to say no:
+        # rmtree under a running job pulls files out from beneath the worker.
+        raise HTTPException(409, f"job {job_id} is {job.status} — wait for it to finish")
     service.delete(job_id)
     return Response(status_code=204)

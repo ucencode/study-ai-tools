@@ -58,6 +58,10 @@ uv run python -m app.cli curriculum --resume 20260822150001-7b2c
 | `POST` | `/api/{service}/jobs/{id}/retry` | Re-run an existing job in place |
 | `DELETE` | `/api/{service}/jobs/{id}` | Remove the job and its directory |
 
+Uploads are capped at 200 MB and streamed to disk, so an oversized one is rejected while
+it arrives. Retrying or deleting a job that is `queued` or `processing` returns `409` —
+there is no cancel, so the only safe answer is to wait.
+
 ## Jobs
 
 One directory per job, holding the record and every file the run produced.

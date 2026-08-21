@@ -3,7 +3,7 @@
 Offline AI toolkit that turns slides into structured documents and curricula into study
 material, powered by Ollama. Job-based: submit, get an id, poll, read the output.
 
-See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for known gaps.
+See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for the next build.
 
 ## Requirements
 

@@ -89,8 +89,9 @@ value. Don't casually reword them; changing output structure means changing pars
 
 ## Testing
 
-**There are no committed tests yet** — see [TODO.md](TODO.md), it's the top item. Everything
-was verified once by hand with throwaway scripts.
+**There are no committed tests yet.** Everything was verified once by hand with throwaway
+scripts that were never checked in. [TODO.md](TODO.md) specs the next build (the frontend)
+and lists this as the standing gap.
 
 Stub the `llm` module rather than mocking Ollama; services call it by module reference, so
 patching the attributes works regardless of import order:

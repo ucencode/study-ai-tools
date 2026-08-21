@@ -33,6 +33,7 @@ app/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
 frontend/            React + Vite UI — plain React, four dependencies, no API client
+  dist/              the build main.py mounts at / (gitignored)
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
   src/components/    shell, the two forms, the jobs rail, job detail
@@ -139,8 +140,12 @@ uv sync
 uv run fastapi dev
 uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
 uv run python -m app.cli curriculum --resume <job-id>
-cd frontend && npm install && npm run dev    # :5173, proxies /api to :8000
+cd frontend && npm install && npm run build  # then fastapi serves the UI at :8000
+cd frontend && npm run dev                   # :5173, proxies /api — for UI work only
 ```
+
+`main.py` mounts `frontend/dist` at `/` when it exists, so a built UI needs one process.
+The mount is guarded: `dist/` is gitignored, and a fresh clone must still start.
 
 `OLLAMA_HOST` / `OLLAMA_API_KEY` point at a remote Ollama. Cloud models are just names
 ending `-cloud` or `:cloud`. LibreOffice is optional and only needed for `.pptx`.

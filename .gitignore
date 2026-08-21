@@ -1,37 +1,3 @@
-# Python
-venv/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-build/
+__pycache__
 
-# Frontend (dist is a build artifact — rebuild with: cd frontend && npm run build)
-node_modules/
-frontend/dist/
-frontend/.vite/
-
-# IDE
-.vscode/
-.idea/
-
-# Input files
-inputs/**
-!inputs/.gitkeep
-
-# Output files (keep folders, ignore content)
-outputs/**
-!outputs/slide-summarizinator/
-!outputs/slide-summarizinator/.gitkeep
-!outputs/study-plan-generatinator/
-!outputs/study-plan-generatinator/.gitkeep
-
-# Presets (keep example only)
-tools/slide-summarizinator/presets/*
-!tools/slide-summarizinator/presets/example.toml
-
-# OS
-.DS_Store
-Thumbs.db
+.venv

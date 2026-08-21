@@ -18,5 +18,8 @@ study-ai-tools = "study_ai_tools:main"
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.uv]
+package = false
+
 [tool.fastapi]
 entrypoint = "main:app"

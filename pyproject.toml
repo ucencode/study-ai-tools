@@ -1,0 +1,25 @@
+[project]
+name = "study-ai-tools"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ahmad Husein Hambali", email = "ahmadhuseinh.03@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi[standard]>=0.141.1",
+    "ollama>=0.6.1",
+    "pillow>=12.2.0",
+    "pypdfium2>=5.0.4",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv]
+package = false
+
+[tool.fastapi]
+entrypoint = "main:app"

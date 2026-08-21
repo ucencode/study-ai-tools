@@ -1,0 +1,69 @@
+# Which models can play which role.
+#
+# Ollama ships new models constantly and this list goes stale fast — add new entries
+# as you pull them. Nothing here is a whitelist: any model Ollama already has works
+# even if it is not listed, it just shows up as "unlisted" with no role hints.
+#
+#   roles  vision = OCR of page images | refine = clean up / rewrite OCR text
+#          llm    = curriculum plans and study material
+#   where  local  = runs on this machine | cloud = Ollama Cloud, needs a signed-in ollama
+
+[[models]]
+name = "qwen3-vl:8b"
+roles = ["vision"]
+where = "local"
+
+[[models]]
+name = "qwen2.5vl:7b"
+roles = ["vision"]
+where = "local"
+
+[[models]]
+name = "llama3.2-vision:11b"
+roles = ["vision"]
+where = "local"
+
+[[models]]
+name = "glm-ocr:bf16"
+roles = ["vision"]
+where = "local"
+
+[[models]]
+name = "deepseek-ocr:latest"
+roles = ["vision"]
+where = "local"
+
+[[models]]
+name = "gemma3:12b"
+roles = ["vision", "refine", "llm"]
+where = "local"
+
+[[models]]
+name = "qwen3:8b"
+roles = ["refine", "llm"]
+where = "local"
+
+[[models]]
+name = "mistral:7b"
+roles = ["refine", "llm"]
+where = "local"
+
+[[models]]
+name = "gpt-oss:20b"
+roles = ["refine", "llm"]
+where = "local"
+
+[[models]]
+name = "gpt-oss:120b-cloud"
+roles = ["refine", "llm"]
+where = "cloud"
+
+[[models]]
+name = "qwen3-coder:480b-cloud"
+roles = ["refine", "llm"]
+where = "cloud"
+
+[[models]]
+name = "deepseek-v3.1:671b-cloud"
+roles = ["refine", "llm"]
+where = "cloud"

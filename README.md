@@ -1,291 +1,113 @@
 # study-ai-tools
 
-Offline AI toolkit for converting PDFs and slides into structured documents and self-study material, powered by Ollama and local LLMs.
-
-Runs as a **local web app** (FastAPI + React) or straight from the **terminal** — both drive the same generation code in `core/`, and both stream tokens as the model produces them.
-
-## Project Structure
-
-```
-study-ai-tools/
-├── main.py               # FastAPI app: SSE API + serves the built React UI at /
-├── core/                 # the AI pipelines — async generators, no UI assumptions
-│   ├── events.py         # StreamEvent + SSE framing
-│   ├── llm.py            # async Ollama client
-│   ├── languages.py      # language / audience vocabulary
-│   ├── prompts_*.py      # system + user prompts
-│   ├── slides.py         # PDF → OCR → refined document
-│   ├── study_plan.py     # curriculum → plan / material / book
-│   └── storage.py        # outputs, caching, resumable state
-├── frontend/             # Vite + React UI (build output in frontend/dist)
-├── inputs/               # drop PDF and curriculum .txt files here
-├── outputs/
-│   ├── slide-summarizinator/      # raw + compiled OCR outputs
-│   └── study-plan-generatinator/  # generated study plans and materials
-├── tools/                # CLI front-ends over core/
-│   ├── slide-summarizinator/      # index.py, batch.py, preset-generator.py
-│   └── study-plan-generatinator/  # index.py
-├── requirements.txt
-└── setup.sh
-```
+Offline AI toolkit that turns slides into structured documents and curricula into study
+material, powered by Ollama. Job-based: submit, get an id, poll, read the output.
 
 ## Requirements
 
-- Python 3.11+
-- Node 18+ (only to build the web UI)
-- [Ollama](https://ollama.com) installed and running
-- poppler on `PATH` for PDF rendering — `apt install poppler-utils` / `brew install poppler`
+- Python 3.14 (defined in `.python-version`)
+- [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Ollama](https://ollama.com), running
+- LibreOffice — optional, only for `.pptx` input
 
-## Setup
+## Running
 
-```bash
-./setup.sh
+```sh
+uv sync
+uv run fastapi dev
 ```
 
-Or by hand:
+Set `OLLAMA_HOST` / `OLLAMA_API_KEY` to use a remote Ollama. Cloud models are just model
+names ending in `-cloud`. Run a **single** worker — the job queue lives in the process.
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-cd frontend && npm install && npm run build && cd ..
+## CLI
+
+Calls the services directly. Missing flags prompt interactively.
+
+```sh
+uv run python -m app.cli slides deck.pdf --action deep
+uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
+uv run python -m app.cli curriculum --resume 20260822150001-7b2c
 ```
 
----
+| Flag | Applies to | Description |
+|------|-----------|-------------|
+| `--dpi` | slides | Render resolution, default `200` |
+| `--ocr-model` / `--refine-model` | slides | Skip the model prompts |
+| `--action` | slides | `skip` \| `clean` \| `summary` \| `deep` |
+| `--level` | slides | `beginner` \| `intermediate` \| `advanced` |
+| `--mode` | curriculum | `short` \| `full` |
+| `--no-plan` | curriculum | Generate the plan but keep it out of the document |
+| `--skip-quiz` | curriculum | Skip the familiarity questions |
+| `--resume <job-id>` | both | Re-run an existing job instead of creating one |
+| `--lang` | both | Output language code, default `auto` |
 
-## Web app
+## API
 
-One process serves both the React UI and the API:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Ollama reachable, LibreOffice present |
+| `GET` | `/api/config` | Languages, audiences, actions, modes |
+| `GET` | `/api/models` | Installed models with their roles |
+| `GET` | `/api/jobs` | Every job, newest first |
+| `POST` | `/api/slide-summarizer/jobs` | Multipart upload → `202` + job |
+| `POST` | `/api/curriculum-generator/quiz` | Familiarity questions |
+| `POST` | `/api/curriculum-generator/jobs` | → `202` + job |
+| `GET` | `/api/{service}/jobs/{id}` | Status and progress |
+| `GET` | `/api/{service}/jobs/{id}/output` | Output text, partial while running |
+| `POST` | `/api/{service}/jobs/{id}/retry` | Re-run an existing job in place |
+| `DELETE` | `/api/{service}/jobs/{id}` | Remove the job and its directory |
 
-```bash
-source venv/bin/activate
-uvicorn main:app --host 127.0.0.1 --port 8000
-```
+Uploads are capped at 200 MB and streamed to disk, so an oversized one is rejected while
+it arrives. Retrying or deleting a job that is `queued` or `processing` returns `409` —
+there is no cancel, so the only safe answer is to wait.
 
-Open <http://127.0.0.1:8000>. The three tabs map to the two tools plus a browser for everything you've generated:
+## Jobs
 
-| Tab | What it does |
-|-----|--------------|
-| Study Plan | Paste or load a curriculum, optionally answer a familiarity check, stream a plan / material / book |
-| Slides | Upload a PDF, pick a vision model and refine mode, watch pages transcribe and the document stream in |
-| Outputs | Read and download every file the tools have written |
-
-Output still lands in `outputs/`, exactly as the CLIs write it — the web UI is another way in, not a separate store.
-
-### Working on the UI
-
-`npm run dev` gives hot reload on <http://localhost:5173> and proxies `/api` to uvicorn on `:8000`, so run both:
-
-```bash
-uvicorn main:app --reload          # terminal 1
-cd frontend && npm run dev         # terminal 2
-```
-
-Rebuild (`npm run build`) when you're done, so the single-server setup picks the changes up.
-
-### API
-
-Generation endpoints stream [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events). They're `POST` (the request bodies carry whole curricula), so the frontend reads them with `fetch` + a `ReadableStream` reader rather than `EventSource`.
-
-| Method | Endpoint | Purpose |
-|--------|----------|---------|
-| `GET` | `/api/health` | Server status and whether Ollama answers |
-| `GET` | `/api/config` | Languages, audience levels, modes, refine actions |
-| `GET` | `/api/models` | Installed models, split by role |
-| `POST` | `/api/study-plan/assessment` | Familiarity questions for a curriculum |
-| `GET` | `/api/study-plan/partial` | Whether an interrupted book run can resume |
-| `POST` | `/api/study-plan/stream` | **SSE** — plan / material / book |
-| `GET` | `/api/slides/inputs` | PDFs available in `inputs/` |
-| `POST` | `/api/slides/upload` | Upload a PDF into `inputs/` |
-| `POST` | `/api/slides/stream` | **SSE** — OCR and refine |
-| `GET` | `/api/outputs` | Every generated file with its frontmatter |
-| `GET` | `/api/outputs/{tool}/{name}` | Read one (`?download=true` to save it) |
-
-Each SSE frame is a named event with a JSON payload:
+One directory per job, holding the record and every file the run produced.
 
 ```
-event: token
-data: {"text": "…the next chunk of generated text…"}
+data/jobs/slide_summarizer/<id>/       job.json  input.pdf|pptx  converted.pdf  raw.txt  output.md
+data/jobs/curriculum_generator/<id>/   job.json  input.txt  plan.md  chapters/NN.md  output.md
 ```
 
-| Event | Payload |
-|-------|---------|
-| `status` | `{stage, message, …}` — progress, the same lines the CLI prints |
-| `section` | `{key, label}` — a new output section begins (plan, chapter 3/12, …) |
-| `token` | `{text}` — generated text, emitted as the model produces it |
-| `meta` | frontmatter, topic lists |
-| `done` | `{path, name, tool, …}` — a file was written |
-| `error` | `{message}` — the run stopped |
+Status moves `queued → processing → completed | failed`. Full-mode chapters are checkpointed
+as they finish, so retrying an interrupted job (`--resume`, or `POST .../retry`) picks up from
+the next chapter rather than starting over. Retrying a slide job re-runs its OCR.
 
-Interactive docs are at `/docs` while the server is running.
+OCR transcripts are reused across jobs keyed on the SHA-256 of the uploaded file plus the model
+and dpi — two different decks both named `lecture.pdf` do not collide.
 
----
-
-## Tool 1 — OCR (`tools/slide-summarizinator/`)
-
-Converts PDF pages to images, runs OCR via a vision model, and optionally refines the output into clean text, study notes, or structured book-style documents.
-
-### Supported Models
-
-| Role | Keywords matched |
-|------|-----------------|
-| Vision (OCR) | `qwen3.5`, `qwen3-vl`, `qwen2.5vl`, `deepseek-ocr`, `llama3.2-vision`, `gemma4`, `ministral-3`, `glm-ocr` |
-| Refine (LLM) | `glm-5.1`, `gemma4`, `qwen3.5`, `gpt-oss` |
-
-```bash
-ollama pull glm-ocr:bf16
-```
-
-### Usage
-
-**Interactive:**
-
-```bash
-python tools/slide-summarizinator/index.py inputs/slides.pdf
-```
-
-Prompts you to select vision model, refine mode, language, and audience level. Use shell tab completion on the file path.
-
-**With preset (non-interactive):**
-
-```bash
-python tools/slide-summarizinator/index.py inputs/slides.pdf --preset example.toml
-```
-
-**Batch — process all PDFs in `inputs/`:**
-
-```bash
-python tools/slide-summarizinator/batch.py --preset example.toml
-```
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--preset` | — | Optional, if its empty you will select one preset or create a new one |
-
-### Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--dpi` | `200` | Render resolution (higher = more detail, slower) |
-| `--preset` | — | Load a TOML preset from `tools/slide-summarizinator/presets/`, skip interactive prompts |
-
-### Presets
-
-TOML files in `tools/slide-summarizinator/presets/`. See [`tools/slide-summarizinator/presets/example.toml`](tools/slide-summarizinator/presets/example.toml):
-
-```toml
-vision_model = "qwen3.5:9b"
-refine_model = "gpt-oss:120b-cloud"
-action = "deep"      # clean | summary | deep | skip
-lang = "en"          # "auto" (preserve source language) or see supported languages below
-level = "beginner"   # beginner | intermediate | advanced
-```
-
-Validation runs before processing — invalid models, actions, languages, or levels will exit with a clear error.
-
-### Refine Modes
-
-| Mode | Description |
-|------|-------------|
-| `skip` | Save raw OCR only |
-| `clean` | Fix OCR noise, broken words, grammar |
-| `summary` | Compress into bullet-point study notes |
-| `deep` | Book-style structured document with prose and analogies |
-
-### Output
-
-```
-outputs/slide-summarizinator/
-  <timestamp>-raw.txt       # raw OCR text (file, pages, dpi, model)
-  <timestamp>-compiled.txt  # refined output (origin, model, mode, lang, level)
-```
-
-Raw OCR results are cached per PDF filename and vision model. Re-running the same file with the same model skips OCR and reuses the cached output.
-
----
-
-## Tool 2 — Learning Plan Generator (`tools/study-plan-generatinator/`)
-
-Takes a curriculum `.txt` file and generates a structured self-study plan and per-topic study material using a local LLM.
-
-### Supported Models
-
-Any model matched by keywords: `llama3`, `qwen3`, `gemma`, `mistral`, `deepseek`, `phi`, `gpt-oss`
-
-### Usage
-
-**Interactive (picks curriculum file from `inputs/`):**
-
-```bash
-python tools/study-plan-generatinator/index.py
-```
-
-Prompts you to select a model, output language, and mode (plan only or plan + material).
-
-**With arguments:**
-
-```bash
-python tools/study-plan-generatinator/index.py inputs/curriculum.txt --lang en --mode full
-```
-
-### Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--model` | — | Skip model selection prompt |
-| `--lang` | — | Output language code (see supported languages) |
-| `--mode` | — | `plan` = study plan only \| `full` = plan + material per topic \| `book` = one chained chapter per topic |
-| `--skip-assessment` | — | Skip the learner familiarity questions |
-| `--fresh` | — | Book mode: discard an in-progress run and start over |
-
-### Modes
+### Slide modes
 
 | Mode | Output |
 |------|--------|
-| `plan` | Weekly schedule, phase breakdown, per-topic checkpoints, resource recommendations |
-| `full` | Everything in `plan` + per-topic study material (concept, worked examples, practice problems, misconceptions, go deeper) |
-| `book` | Everything in `plan` + one book-style chapter per topic, each chained onto a digest of the previous ones |
+| `skip` | Raw OCR only |
+| `clean` | Fix OCR noise, broken words, grammar |
+| `summary` | Bullet-point study notes |
+| `deep` | Book-style structured document with prose and analogies |
 
-Book mode is slow (two model calls per chapter) but checkpoints after every chapter — interrupt it with Ctrl+C, or close the browser tab, and the next run offers to resume.
+### Curriculum modes
 
-### Output
+| Mode | Output |
+|------|--------|
+| `short` | Condensed material over all topics in one pass, plus further references |
+| `full` | One chapter per topic, one model call each, chained through real dependencies |
 
-```
-outputs/study-plan-generatinator/
-  <timestamp>-<slug>-study_plan.md   # plan mode
-  <timestamp>-<slug>-full.md         # full mode
-  <timestamp>-<slug>-book.md         # book mode
-```
+The study plan is always generated — it produces the chapter order. `--no-plan` keeps it out
+of the document without skipping it.
 
-All output files include YAML frontmatter (course, topics, credits, estimated weeks, model, language).
+## Models
 
----
+`config/models.toml` maps model names to roles (`vision`, `refine`, `llm`) and `local`/`cloud`.
+It goes stale as Ollama ships new models — add entries as you pull them.
 
-## Supported Languages (both tools)
+An unlisted model is still usable if you name it explicitly, but it is not *suggested* for any
+role: unknown capability is not the same as supporting everything, and offering a text-only
+model as an OCR choice is worse than offering nothing.
 
-| Code | Language |
-|------|----------|
-| `auto` | Preserve source language |
-| `ar` | العربية (Arabic) |
-| `de` | Deutsch (German) |
-| `en` | English |
-| `es` | Español (Spanish) |
-| `fi` | Suomi (Finnish)* |
-| `fr` | Français (French) |
-| `hi` | हिन्दी (Hindi)* |
-| `id` | Bahasa Indonesia |
-| `it` | Italiano (Italian)* |
-| `ja` | 日本語 (Japanese)* |
-| `ko` | 한국어 (Korean)* |
-| `nl` | Nederlands (Dutch)* |
-| `pl` | Polski (Polish)* |
-| `pt` | Português (Portuguese) |
-| `ru` | Русский (Russian) |
-| `sv` | Svenska (Swedish)* |
-| `th` | ภาษาไทย (Thai)* |
-| `tr` | Türkçe (Turkish)* |
-| `uk` | Українська (Ukrainian)* |
-| `vi` | Tiếng Việt (Vietnamese)* |
-| `zh` | 简体中文 (Chinese) |
+## Languages
 
-\* Output quality depends on the model's proficiency in this language.
+`auto` preserves the source language. Otherwise: `ar` `de` `en` `es` `fi` `fr` `hi` `id` `it`
+`ja` `ko` `nl` `pl` `pt` `ru` `sv` `th` `tr` `uk` `vi` `zh`. Quality on the less common ones
+depends on the model's proficiency.

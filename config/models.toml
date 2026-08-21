@@ -34,7 +34,32 @@ roles = ["vision"]
 where = "local"
 
 [[models]]
+name = "minicpm-v4.5:8b"
+roles = ["vision"]
+where = "local"
+
+[[models]]
 name = "gemma3:12b"
+roles = ["vision", "refine", "llm"]
+where = "local"
+
+[[models]]
+name = "gemma4:12b"
+roles = ["vision", "refine", "llm"]
+where = "local"
+
+[[models]]
+name = "gemma4:12b-it-qat"
+roles = ["vision", "refine", "llm"]
+where = "local"
+
+[[models]]
+name = "gemma4:e4b"
+roles = ["vision", "refine", "llm"]
+where = "local"
+
+[[models]]
+name = "qwen3.5:9b"
 roles = ["vision", "refine", "llm"]
 where = "local"
 
@@ -55,6 +80,21 @@ where = "local"
 
 [[models]]
 name = "gpt-oss:120b-cloud"
+roles = ["refine", "llm"]
+where = "cloud"
+
+[[models]]
+name = "gpt-oss:20b-cloud"
+roles = ["refine", "llm"]
+where = "cloud"
+
+[[models]]
+name = "gemma4:31b-cloud"
+roles = ["vision", "refine", "llm"]
+where = "cloud"
+
+[[models]]
+name = "nemotron-3-nano:30b-cloud"
 roles = ["refine", "llm"]
 where = "cloud"
 

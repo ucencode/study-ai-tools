@@ -22,6 +22,7 @@ propose the dumber version first.
 ## Layout
 
 ```
+setup.sh             one-step install; asks before sudo, downloads, or LibreOffice
 main.py              FastAPI app + lifespan (starts/stops the worker)
 config/
   model_default.toml model → roles + local/cloud; the checked-in default, kept minimal
@@ -138,6 +139,7 @@ job a no-op and quietly invalidate the test.
 ## Running
 
 ```sh
+./setup.sh                                   # or do the next two yourself
 uv sync
 uv run fastapi dev
 uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
@@ -148,6 +150,10 @@ cd frontend && npm run dev                   # :5173, proxies /api — for UI wo
 
 `main.py` mounts `frontend/dist` at `/` when it exists, so a built UI needs one process.
 The mount is guarded: `dist/` is gitignored, and a fresh clone must still start.
+
+`setup.sh` does all of the above on a new machine and is safe to re-run. It installs
+nothing that needs sudo without a yes, and LibreOffice — optional, `.pptx` only — needs
+an explicit one: the prompt defaults to no and `--yes` alone does not answer it.
 
 `OLLAMA_HOST` / `OLLAMA_API_KEY` point at a remote Ollama. Cloud models are just names
 ending `-cloud` or `:cloud`. LibreOffice is optional and only needed for `.pptx`.

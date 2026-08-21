@@ -32,6 +32,10 @@ app/
   core/              llm, catalogue, languages, documents, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
+frontend/            React + Vite UI — plain React, four dependencies, no API client
+  src/api.js         one hand-written function per endpoint
+  src/usePolling.js  the only polling primitive
+  src/components/    shell, the two forms, the jobs rail, job detail
 ```
 
 Dependency direction is one-way: `routers → services → repositories → models`, with `core`
@@ -87,11 +91,28 @@ Full mode is the subtle one. It makes **exactly one model call per chapter**:
 Prompts in `app/core/prompts/` are lifted from the original CLI and are the actual product
 value. Don't casually reword them; changing output structure means changing parsing too.
 
+## The frontend
+
+Built to [TODO.md](TODO.md), which stays the spec. It polls; there is no SSE and no
+websocket to add back.
+
+| Rule | Why |
+|---|---|
+| **Polling stops when a job is terminal.** The detail's interval drops to 0 on `completed`/`failed`; the rail keeps polling because jobs also arrive from the CLI. | A loop that never stops is the main way this UI can go wrong. |
+| **Stage checklists are derived from `params.mode` / `params.action`**, never from a list of every stage name. | `material`+`references` and `chapters` are branches. A job must never show both. |
+| **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |
+| **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
+| **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
+
+Connection loss never blanks the screen: the last data stays, marked stale after three
+consecutive failures, and polling keeps retrying.
+
 ## Testing
 
 **There are no committed tests yet.** Everything was verified once by hand with throwaway
-scripts that were never checked in. [TODO.md](TODO.md) specs the next build (the frontend)
-and lists this as the standing gap.
+scripts that were never checked in — the backend by hand, the frontend by driving it with
+Playwright against a stubbed `llm`. [TODO.md](TODO.md) holds the frontend's acceptance list
+and this remains the standing gap.
 
 Stub the `llm` module rather than mocking Ollama; services call it by module reference, so
 patching the attributes works regardless of import order:
@@ -118,6 +139,7 @@ uv sync
 uv run fastapi dev
 uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
 uv run python -m app.cli curriculum --resume <job-id>
+cd frontend && npm install && npm run dev    # :5173, proxies /api to :8000
 ```
 
 `OLLAMA_HOST` / `OLLAMA_API_KEY` point at a remote Ollama. Cloud models are just names

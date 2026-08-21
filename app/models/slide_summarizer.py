@@ -13,6 +13,9 @@ SERVICE = "slide_summarizer"
 
 class SlideSummarizerParams(Strict):
     filename: str
+    # What the OCR cache keys on. Two people both uploading "lecture.pdf" are not
+    # uploading the same lecture, so the name cannot establish identity.
+    source_sha256: str = ""
     source_format: SourceFormat
     dpi: int = Field(default=200, ge=50, le=600)
     ocr_model: str

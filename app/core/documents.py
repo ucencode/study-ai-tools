@@ -8,7 +8,6 @@ import shutil
 import subprocess
 from io import BytesIO
 from pathlib import Path
-from typing import Iterator
 
 import pypdfium2
 
@@ -71,18 +70,19 @@ def page_count(pdf: Path) -> int:
         document.close()
 
 
-def render_pages(pdf: Path, dpi: int = 200) -> Iterator[bytes]:
-    """Yield each page as PNG bytes, one at a time.
+def render_page(pdf: Path, index: int, dpi: int = 200) -> bytes:
+    """Render one page to PNG bytes.
 
-    Lazy on purpose: a 200-page deck at 300 dpi is gigabytes if you materialize it.
+    One page at a time on purpose: a 200-page deck at 300 dpi is gigabytes if you
+    materialize it. Reopening the document each call costs a few milliseconds against
+    an OCR round trip measured in seconds, and it keeps every PDFium handle confined
+    to the calling thread — which matters because callers run this in a worker thread.
     """
     document = pypdfium2.PdfDocument(str(pdf))
     try:
-        for page in document:
-            image = page.render(scale=dpi / 72).to_pil()
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-            yield buffer.getvalue()
-            page.close()
+        image = document[index].render(scale=dpi / 72).to_pil()
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue()
     finally:
         document.close()

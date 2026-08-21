@@ -5,6 +5,7 @@ behind is identical in shape to one the API produced.
 
     uv run python -m app.cli slides deck.pdf --action deep
     uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
+    uv run python -m app.cli curriculum --resume 20260822150001-7b2c
 """
 
 import argparse
@@ -41,6 +42,20 @@ def ask_choice(options: list[str], label: str) -> str:
         return options[0]
 
 
+async def ask_role_model(role: str, label: str) -> str:
+    """Offer models classified for this role, falling back to everything installed.
+
+    An empty catalogue should not block a fresh install, but the warning makes clear
+    the tool has stopped vouching for the choice.
+    """
+    options = await catalogue.for_role(role)
+    if not options:
+        options = [m["name"] for m in await catalogue.available()]
+        print(f"\n[warn] no model in config/models.toml is marked '{role}'. Listing "
+              f"everything installed — pick one that actually supports it.")
+    return ask_choice(options, label)
+
+
 def ask_language() -> str:
     print(f"\nOutput language? ({' / '.join(LANG_INSTRUCTION)}) [default: auto]")
     lang = input(">>> ").strip().lower() or "auto"
@@ -61,6 +76,23 @@ def ask_enum(options: tuple[str, ...], label: str, default: str) -> str:
     return choice
 
 
+# What to tell the user to run if they Ctrl+C: (subcommand, job id, what survives).
+_active: tuple[str, str, str] | None = None
+
+
+async def resume(args, service, command: str):
+    """Re-run an existing job in place. Returns True when --resume was handled."""
+    global _active
+    if not args.resume:
+        return False
+    if service.get(args.resume) is None:
+        raise SystemExit(f"[error] no such job: {args.resume}")
+    _active = (command, args.resume, "")
+    print(f"[job] {args.resume} — resuming ({service.repository.job_dir(args.resume)})")
+    report(await service.run(args.resume), service)
+    return True
+
+
 def report(job, service) -> None:
     if job.status == "failed":
         print(f"\n[failed] {job.error}")
@@ -72,6 +104,13 @@ def report(job, service) -> None:
 # ── slides ───────────────────────────────────────────────────────────────────
 
 async def run_slides(args) -> None:
+    global _active
+    service = SlideSummarizerService()
+    if await resume(args, service, "slides"):
+        return
+    if not args.file:
+        raise SystemExit("[error] a file is required (or --resume <job-id>)")
+
     source = Path(args.file)
     if not source.exists():
         raise SystemExit(f"[error] file not found: {source}")
@@ -80,18 +119,16 @@ async def run_slides(args) -> None:
     if suffix not in (".pdf", ".pptx"):
         raise SystemExit(f"[error] expected a .pdf or .pptx file, got {suffix or 'no extension'}")
 
-    ocr_model = args.ocr_model or ask_choice(await catalogue.for_role("vision"), "vision model")
+    ocr_model = args.ocr_model or await ask_role_model("vision", "vision model")
     action = args.action or ask_enum(ACTIONS, "Refine mode", "skip")
 
     refine_model, lang, level = None, "auto", None
     if action != "skip":
-        refine_model = args.refine_model or ask_choice(
-            await catalogue.for_role("refine"), "refine model")
+        refine_model = args.refine_model or await ask_role_model("refine", "refine model")
         lang = args.lang or ask_language()
         if action in ("summary", "deep"):
             level = args.level or ask_enum(LEVELS, "Audience level", "intermediate")
 
-    service = SlideSummarizerService()
     job = service.create(
         SlideSummarizerParams(
             filename=source.name,
@@ -106,6 +143,7 @@ async def run_slides(args) -> None:
         source,
     )
 
+    _active = ("slides", job.id, "the job is kept, but OCR restarts from page one")
     print(f"[job] {job.id}  ({service.repository.job_dir(job.id)})")
     report(await service.run(job.id), service)
 
@@ -113,16 +151,22 @@ async def run_slides(args) -> None:
 # ── curriculum ───────────────────────────────────────────────────────────────
 
 async def run_curriculum(args) -> None:
+    global _active
+    service = CurriculumGeneratorService()
+    if await resume(args, service, "curriculum"):
+        return
+    if not args.file:
+        raise SystemExit("[error] a file is required (or --resume <job-id>)")
+
     source = Path(args.file)
     if not source.exists():
         raise SystemExit(f"[error] file not found: {source}")
     curriculum = source.read_text(encoding="utf-8").strip()
 
-    model = args.model or ask_choice(await catalogue.for_role("llm"), "model")
+    model = args.model or await ask_role_model("llm", "model")
     lang = args.lang or ask_language()
     mode = args.mode or ask_enum(MODES, "Mode", "short")
 
-    service = CurriculumGeneratorService()
     questions, answers = [], []
 
     if not args.skip_quiz:
@@ -152,6 +196,7 @@ async def run_curriculum(args) -> None:
         curriculum,
     )
 
+    _active = ("curriculum", job.id, "finished chapters are kept")
     print(f"\n[job] {job.id}  ({service.repository.job_dir(job.id)})")
     report(await service.run(job.id), service)
 
@@ -163,7 +208,8 @@ def parse_args(argv: list[str] | None = None):
     sub = parser.add_subparsers(dest="command", required=True)
 
     slides = sub.add_parser("slides", help="PDF or PPTX → OCR → refined document")
-    slides.add_argument("file")
+    slides.add_argument("file", nargs="?")
+    slides.add_argument("--resume", metavar="JOB_ID", help="re-run an existing job")
     slides.add_argument("--dpi", type=int, default=200)
     slides.add_argument("--ocr-model")
     slides.add_argument("--action", choices=ACTIONS)
@@ -173,7 +219,9 @@ def parse_args(argv: list[str] | None = None):
     slides.set_defaults(run=run_slides)
 
     curriculum = sub.add_parser("curriculum", help="curriculum → study plan + textbook")
-    curriculum.add_argument("file")
+    curriculum.add_argument("file", nargs="?")
+    curriculum.add_argument("--resume", metavar="JOB_ID",
+                            help="continue an existing job from its last finished chapter")
     curriculum.add_argument("--model")
     curriculum.add_argument("--lang")
     curriculum.add_argument("--mode", choices=MODES)
@@ -190,7 +238,13 @@ def main(argv: list[str] | None = None) -> None:
     try:
         asyncio.run(args.run(args))
     except KeyboardInterrupt:
-        print("\n[interrupted] progress is saved — rerun to resume")
+        if _active:
+            command, job_id, survives = _active
+            note = f" — {survives}" if survives else ""
+            print(f"\n[interrupted] job {job_id}{note}. Continue with:"
+                  f"\n  uv run python -m app.cli {command} --resume {job_id}")
+        else:
+            print("\n[interrupted]")
         sys.exit(130)
 
 

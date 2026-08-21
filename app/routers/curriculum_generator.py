@@ -73,6 +73,20 @@ async def get_job(job_id: str) -> CurriculumGeneratorJob:
     return job
 
 
+@router.post("/jobs/{job_id}/retry", status_code=202)
+async def retry_job(job_id: str) -> CurriculumGeneratorJob:
+    """Continue a job in place, picking up from its last finished chapter."""
+    job = service.get(job_id)
+    if job is None:
+        raise HTTPException(404, f"no such job: {job_id}")
+    if job.status in ("queued", "processing"):
+        raise HTTPException(409, f"job {job_id} is already {job.status}")
+
+    job = service.repository.set_status(job_id, "queued")
+    enqueue("curriculum_generator", job_id)
+    return job
+
+
 @router.get("/jobs/{job_id}/output")
 async def get_output(job_id: str) -> dict:
     try:

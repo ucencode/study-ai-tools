@@ -58,8 +58,11 @@ async def available() -> list[dict]:
 
 
 async def for_role(role: str) -> list[str]:
-    """Installed model names that can do `role`, plus every unlisted one."""
-    return [
-        m["name"] for m in await available()
-        if role in m["roles"] or m["unlisted"]
-    ]
+    """Installed model names explicitly classified as able to do `role`.
+
+    Unlisted models are deliberately excluded. The catalogue is a hint rather than a
+    whitelist, so callers may still name one directly — but an unknown model is an
+    unknown capability, and offering a text-only model as an OCR choice is worse than
+    offering nothing. Use `available()` when you want everything Ollama has.
+    """
+    return [m["name"] for m in await available() if role in m["roles"]]

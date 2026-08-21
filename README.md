@@ -27,6 +27,7 @@ Calls the services directly. Missing flags prompt interactively.
 ```sh
 uv run python -m app.cli slides deck.pdf --action deep
 uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
+uv run python -m app.cli curriculum --resume 20260822150001-7b2c
 ```
 
 | Flag | Applies to | Description |
@@ -38,6 +39,7 @@ uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
 | `--mode` | curriculum | `short` \| `full` |
 | `--no-plan` | curriculum | Generate the plan but keep it out of the document |
 | `--skip-quiz` | curriculum | Skip the familiarity questions |
+| `--resume <job-id>` | both | Re-run an existing job instead of creating one |
 | `--lang` | both | Output language code, default `auto` |
 
 ## API
@@ -53,6 +55,7 @@ uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
 | `POST` | `/api/curriculum-generator/jobs` | → `202` + job |
 | `GET` | `/api/{service}/jobs/{id}` | Status and progress |
 | `GET` | `/api/{service}/jobs/{id}/output` | Output text, partial while running |
+| `POST` | `/api/{service}/jobs/{id}/retry` | Re-run an existing job in place |
 | `DELETE` | `/api/{service}/jobs/{id}` | Remove the job and its directory |
 
 ## Jobs
@@ -65,7 +68,11 @@ data/jobs/curriculum_generator/<id>/   job.json  input.txt  plan.md  chapters/NN
 ```
 
 Status moves `queued → processing → completed | failed`. Full-mode chapters are checkpointed
-as they finish, so re-running an interrupted job resumes from the next one.
+as they finish, so retrying an interrupted job (`--resume`, or `POST .../retry`) picks up from
+the next chapter rather than starting over. Retrying a slide job re-runs its OCR.
+
+OCR transcripts are reused across jobs keyed on the SHA-256 of the uploaded file plus the model
+and dpi — two different decks both named `lecture.pdf` do not collide.
 
 ### Slide modes
 
@@ -89,8 +96,11 @@ of the document without skipping it.
 ## Models
 
 `config/models.toml` maps model names to roles (`vision`, `refine`, `llm`) and `local`/`cloud`.
-It goes stale as Ollama ships new models — add entries as you pull them. Anything installed but
-unlisted still works, it just has no role hints.
+It goes stale as Ollama ships new models — add entries as you pull them.
+
+An unlisted model is still usable if you name it explicitly, but it is not *suggested* for any
+role: unknown capability is not the same as supporting everything, and offering a text-only
+model as an OCR choice is worse than offering nothing.
 
 ## Languages
 

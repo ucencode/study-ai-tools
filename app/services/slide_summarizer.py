@@ -4,6 +4,8 @@ Every stage writes into the job directory as it goes, so a client polling the jo
 sees real progress and a crashed run leaves whatever it finished behind.
 """
 
+import asyncio
+import hashlib
 import shutil
 from pathlib import Path
 
@@ -76,6 +78,8 @@ class SlideSummarizerService:
         else:
             shutil.copyfile(source, target)
 
+        params = params.model_copy(update={"source_sha256": _sha256(target)})
+
         return self.repository.create(
             SlideSummarizerJob(id=job_id, input_path=input_name, params=params)
         )
@@ -91,7 +95,7 @@ class SlideSummarizerService:
         params = job.params
 
         try:
-            pdf = self._as_pdf(job_id, job.input_path, params.source_format)
+            pdf = await self._as_pdf(job_id, job.input_path, params.source_format)
             raw_text, pages, cached = await self._transcribe(job_id, pdf, params)
 
             result = SlideSummarizerResult(
@@ -120,13 +124,17 @@ class SlideSummarizerService:
             if params.refine_model:
                 await llm.unload(params.refine_model)
 
-    def _as_pdf(self, job_id: str, input_path: str, source_format: str) -> Path:
+    async def _as_pdf(self, job_id: str, input_path: str, source_format: str) -> Path:
         source = self.repository.resolve(job_id, input_path)
         if source_format == "pdf":
             return source
 
         self.repository.set_progress(job_id, "convert", 0, 1)
-        converted = documents.pptx_to_pdf(source, self.repository.job_dir(job_id))
+        # LibreOffice is allowed 300 seconds. Running it inline would freeze the event
+        # loop this worker shares with the API, so polling a job would stall behind it.
+        converted = await asyncio.to_thread(
+            documents.pptx_to_pdf, source, self.repository.job_dir(job_id)
+        )
         # LibreOffice names it after the input stem; normalize so the job dir is predictable.
         target = self.repository.job_dir(job_id) / "converted.pdf"
         if converted != target:
@@ -145,12 +153,15 @@ class SlideSummarizerService:
             text = raw_path.read_text(encoding="utf-8")
             return text, text.count("--- Page "), True
 
-        total = documents.page_count(pdf)
+        total = await asyncio.to_thread(documents.page_count, pdf)
         pages: list[str] = []
 
         with raw_path.open("w", encoding="utf-8") as out:
-            for index, image in enumerate(documents.render_pages(pdf, params.dpi)):
+            for index in range(total):
                 self.repository.set_progress(job_id, "ocr", index, total)
+                image = await asyncio.to_thread(
+                    documents.render_page, pdf, index, params.dpi
+                )
                 text = await self._ocr_page(image, params.ocr_model, index)
                 page = f"--- Page {index + 1} ---\n{text}"
                 pages.append(page)
@@ -180,13 +191,19 @@ class SlideSummarizerService:
             return f"[missing page {index + 1}]"
 
     def _cached_raw(self, job_id: str, params: SlideSummarizerParams) -> Path | None:
-        """A completed job that already OCR'd this same file with this same model."""
+        """A completed job that already OCR'd this exact file with this same model.
+
+        Keyed on the content digest: matching on the filename would hand Tuesday's
+        "lecture.pdf" the transcript of Monday's.
+        """
+        if not params.source_sha256:
+            return None
         for job in self.repository.select_all():
             if job.id == job_id or job.status != "completed":
                 continue
-            if job.params.filename != params.filename or job.params.ocr_model != params.ocr_model:
+            if job.params.source_sha256 != params.source_sha256:
                 continue
-            if job.params.dpi != params.dpi:
+            if job.params.ocr_model != params.ocr_model or job.params.dpi != params.dpi:
                 continue
             path = self.repository.job_dir(job.id) / RAW_FILE
             if path.exists():
@@ -224,3 +241,11 @@ class SlideSummarizerService:
 
         self.repository.set_progress(job_id, "refine", 1, 1)
         return "".join(chunks)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        while block := file.read(1024 * 1024):
+            digest.update(block)
+    return digest.hexdigest()

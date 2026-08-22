@@ -9,9 +9,12 @@
 # as you pull them. Nothing here is a whitelist: any model Ollama already has works
 # even if it is not listed, it just shows up as "unlisted" with no role hints.
 #
-#   roles  vision = OCR of page images | refine = clean up / rewrite OCR text
+#   roles  vision = OCR of page images
+#          refine = clean up / rewrite OCR text
 #          llm    = curriculum plans and study material
-#   where  local  = runs on this machine | cloud = Ollama Cloud, needs a signed-in ollama
+#
+#   where  local  = runs on this machine
+#          cloud  = Ollama Cloud, needs a signed-in ollama
 
 [[models]]
 name = "gemma4:31b-cloud"

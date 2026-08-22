@@ -1,8 +1,9 @@
-# Next: React + Vite frontend
+# Delivered: React + Vite frontend
 
-> **Brief for the next coding agent.** Read [CLAUDE.md](CLAUDE.md) first — the backend's
-> invariants and design stance apply here too. This document is the spec; implement it
-> rather than re-planning it. Where it is silent, pick the boring option.
+> **Built — this stays the spec.** It was written as a brief for the next coding agent and
+> is kept as the record of what the UI is supposed to do, so read it before changing the
+> frontend. [CLAUDE.md](CLAUDE.md) carries the backend's invariants and design stance, which
+> apply here too. Where this document is silent, pick the boring option.
 
 ## Objective
 
@@ -398,30 +399,39 @@ mark which are written and show their `established` terms on expand.
 
 ## Acceptance
 
-- [ ] `cd frontend && npm install && npm run dev` works against `uv run fastapi dev`
-- [ ] Submit a PDF, watch `queued → processing → completed` without a refresh
-- [ ] OCR stage advances page by page; `Refine` appears only when `action !== "skip"`
-- [ ] Curriculum **short** job shows material/references and **never** `chapters`
-- [ ] Curriculum **full** job shows `chapters N/total` and **never** material/references
-- [ ] Output grows while the job runs, with no duplicated content
-- [ ] Scrolling up in the output is not undone by the next poll
-- [ ] Polling **stops** once a job is terminal — confirm in devtools Network
-- [ ] Kill the backend mid-job: data goes stale with a note, recovers on return
-- [ ] Retry a failed curriculum job — same id, resumes at the next chapter
-- [ ] Delete a running job → inline note, not a raw error
-- [ ] Ollama stopped → amber bar, submits disabled
-- [ ] Two jobs back to back → second reads as waiting for the worker
-- [ ] Rail header reads `1 running · N waiting`, never a combined "active" count
-- [ ] No fabricated ETA anywhere
+All of it verified. The backend half is held by `tests/` (`uv run pytest`); the browser half
+was walked with throwaway Playwright scripts against a stubbed `llm`, which are **not**
+committed — a JS test runner would be a dependency the constraints above rule out.
+
+- [x] `cd frontend && npm install && npm run dev` works against `uv run fastapi dev`
+- [x] Submit a PDF, watch `queued → processing → completed` without a refresh
+- [x] OCR stage advances page by page; `Refine` appears only when `action !== "skip"`
+- [x] Curriculum **short** job shows material/references and **never** `chapters`
+- [x] Curriculum **full** job shows `chapters N/total` and **never** material/references
+- [x] Output grows while the job runs, with no duplicated content
+- [x] Scrolling up in the output is not undone by the next poll
+- [x] Polling **stops** once a job is terminal — confirm in devtools Network
+- [x] Kill the backend mid-job: data goes stale with a note, recovers on return
+- [x] Retry a failed curriculum job — same id, resumes at the next chapter
+- [x] Delete a running job → inline note, not a raw error
+- [x] Ollama stopped → amber bar, submits disabled
+- [x] Two jobs back to back → second reads as waiting for the worker
+- [x] Rail header reads `1 running · N waiting`, never a combined "active" count
+- [x] No fabricated ETA anywhere
 
 ## Standing backend gaps
 
-Not part of this brief, but the real one: **there are no committed tests.** Every claim in
-PR #3 was verified with throwaway scripts that were never checked in. CLAUDE.md documents the
-fake-`llm` fixture pattern and the scenarios worth locking down. If you have appetite before
-the UI, that is where it should go.
+**The big one is closed:** `tests/` now covers both pipelines end to end, resume, the OCR
+cache, the 409s, the repository rules and the catalogue. It stubs `app.core.llm` and runs
+the real app through `TestClient`, so the worker actually executes queued jobs. CLAUDE.md
+documents the fixtures.
 
-Smaller: retrying a slide job restarts OCR from page one; a crashed chapter leaves an orphaned
-`chapters/NN.md` that is ignored but never cleaned; there is no cancel; the single-worker
-requirement is documented but not enforced; `config/models.toml` goes stale as Ollama ships
-models.
+Still open, and each of them deliberate for now:
+
+| Gap | Where it stands |
+|---|---|
+| Retrying a slide job restarts OCR from page one | Only after a crash *mid*-OCR. A run that finished is reused through the content-hash cache, so the common retry is cheap. Per-page checkpointing would close it. |
+| A crashed chapter leaves an orphaned `chapters/NN.md` | Ignored on resume — `job.json` is the authority — but never cleaned up. |
+| There is no cancel | On purpose: `delete` refuses a live job rather than pulling files out from under the worker. |
+| The single-worker requirement is documented, not enforced | `--workers 2` silently creates two queues feeding one GPU. |
+| The model list goes stale as Ollama ships models | Now `config/models.toml`, yours and gitignored, with `config/model_default.toml` as the checked-in starting point. |

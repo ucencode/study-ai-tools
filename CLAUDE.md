@@ -23,6 +23,7 @@ propose the dumber version first.
 
 ```
 setup.sh             one-step install; asks before sudo, downloads, or LibreOffice
+tests/               pytest; stubs app.core.llm and runs the real app + worker
 main.py              FastAPI app + lifespan (starts/stops the worker)
 config/
   model_default.toml model → roles + local/cloud; the checked-in default, kept minimal
@@ -113,28 +114,32 @@ consecutive failures, and polling keeps retrying.
 
 ## Testing
 
-**There are no committed tests yet.** Everything was verified once by hand with throwaway
-scripts that were never checked in — the backend by hand, the frontend by driving it with
-Playwright against a stubbed `llm`. [TODO.md](TODO.md) holds the frontend's acceptance list
-and this remains the standing gap.
-
-Stub the `llm` module rather than mocking Ollama; services call it by module reference, so
-patching the attributes works regardless of import order:
-
-```python
-from app.core import llm
-async def fake_complete(*, model, messages, options=None, think=None): ...
-async def fake_stream(*, model, messages, options=None, think=None): yield "text"
-llm.complete, llm.stream_chat = fake_complete, fake_stream
+```sh
+uv run pytest
 ```
 
-`TestClient(main.app)` runs the real lifespan, so the worker actually executes queued jobs —
-poll the job endpoint until terminal. Set `PYTHONPATH` to the repo root; `uv run` must be
-invoked from the project directory or it won't find the venv.
+`tests/` covers both pipelines end to end, resume, the OCR cache, the 409s, the repository
+rules and the catalogue — in well under a second, because nothing talks to Ollama.
+
+The frontend has none. A runner would be a dependency [TODO.md](TODO.md) rules out, so its
+acceptance list was walked with throwaway Playwright scripts that were not committed.
+
+Four things `tests/conftest.py` sets up, each for a reason worth keeping:
+
+| Fixture | Why it exists |
+|---|---|
+| `fake_llm` | Stubs the five functions in `app.core.llm`. Services call them by module reference, so patching attributes works regardless of import order — mock the transport instead and you are testing the ollama client. |
+| `client` | `TestClient(main.app)` runs the real lifespan, so the worker actually executes queued jobs. Poll the job endpoint until terminal. |
+| `progress_log` | Spies on `set_progress`. Polling for stage transitions races the worker; the repository sees every one of them. |
+| `clean_jobs` | Wipes the jobs directory between tests. Not tidiness: the OCR cache scans *completed* jobs, so a leftover would turn the next test's OCR into a silent no-op. |
+
+`conftest` redirects `app.core.paths` into a temp dir at import, before anything else is
+imported — a `JobRepository` binds its directory in `__init__`, and the routers instantiate
+their services at import time.
 
 Real PDFs are cheap to make: `pypdfium2.PdfDocument.new()`, `new_page(w, h)`, `save(path)`.
 Use *different* page sizes per fixture, or the content-hash OCR cache will make the second
-job a no-op and quietly invalidate the test.
+job a no-op and quietly invalidate the test — the `pdf` fixture offsets them for you.
 
 ## Running
 

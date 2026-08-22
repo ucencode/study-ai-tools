@@ -98,8 +98,14 @@ value. Don't casually reword them; changing output structure means changing pars
 
 ## The frontend
 
-Built to [TODO.md](TODO.md), which stays the spec. It polls; there is no SSE and no
-websocket to add back.
+It polls; there is no SSE and no websocket to add back. The design thesis is that the
+backend architecture should leak into the UI in useful ways — one worker, a queue, named
+stages, output growing on disk, chapters declaring dependencies, retry resuming. Hiding
+that behind a generic spinner makes the app worse, not just plainer.
+
+The dependency budget is four: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`. No
+state library, no component library, no icon pack, no web font, and `api.js` is written by
+hand rather than generated. Adding a fifth is a decision, not a detail.
 
 | Rule | Why |
 |---|---|
@@ -108,6 +114,9 @@ websocket to add back.
 | **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |
 | **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
 | **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
+| **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
+| **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |
+| **Failures render the raw exception string verbatim**, in a `<pre>`. | `error` is `f"{type(e).__name__}: {e}"`, not prose. Prettifying it in the UI would be inventing detail; friendlier errors are a backend change. |
 
 Connection loss never blanks the screen: the last data stays, marked stale after three
 consecutive failures, and polling keeps retrying.
@@ -121,8 +130,8 @@ uv run pytest
 `tests/` covers both pipelines end to end, resume, the OCR cache, the 409s, the repository
 rules and the catalogue — in well under a second, because nothing talks to Ollama.
 
-The frontend has none. A runner would be a dependency [TODO.md](TODO.md) rules out, so its
-acceptance list was walked with throwaway Playwright scripts that were not committed.
+The frontend has none: a runner would spend the dependency budget above, so its behaviour
+was walked with throwaway Playwright scripts that were not committed.
 
 Four things `tests/conftest.py` sets up, each for a reason worth keeping:
 

@@ -3,7 +3,7 @@
 Offline AI toolkit that turns slides into structured documents and curricula into study
 material, powered by Ollama. Job-based: submit, get an id, poll, read the output.
 
-See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for what the web UI is supposed to do.
+See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for what is left.
 
 ## Setup
 
@@ -48,7 +48,7 @@ uv run pytest
 
 Both pipelines end to end, resume, the OCR cache, the conflict responses, the repository
 rules and the model catalogue. Ollama is stubbed, so the suite needs no models and runs in
-well under a second. The web UI has no tests — see [TODO.md](TODO.md).
+well under a second. The web UI has no tests, deliberately — see [TODO.md](TODO.md).
 
 ## CLI
 

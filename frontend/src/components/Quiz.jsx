@@ -1,5 +1,6 @@
 export default function Quiz({ questions, answers, onAnswer, onBack, onStart, busy }) {
   const known = new Map(answers.map((answer) => [answer.id, answer.known]));
+  const unanswered = questions.length - known.size;
 
   return (
     <section className="quiz">
@@ -34,10 +35,20 @@ export default function Quiz({ questions, answers, onAnswer, onBack, onStart, bu
       </ol>
 
       <div className="row end">
+        {unanswered > 0 && (
+          <p className="secondary">
+            {unanswered} unanswered — answer them, or go back and skip calibration.
+          </p>
+        )}
         <button type="button" className="secondary-button" onClick={onBack} disabled={busy}>
           Back
         </button>
-        <button type="button" className="primary" onClick={onStart} disabled={busy}>
+        <button
+          type="button"
+          className="primary"
+          onClick={onStart}
+          disabled={busy || unanswered > 0}
+        >
           {busy ? "Submitting…" : "Start generation"}
         </button>
       </div>

@@ -16,7 +16,11 @@ export default function App() {
   const [refreshToken, setRefreshToken] = useState(0);
   const [config, setConfig] = useState(null);
   const [models, setModels] = useState(null);
-  const [metaError, setMetaError] = useState(null);
+  // One state for both would let whichever request finishes second clear the other
+  // one's failure, leaving a form stuck on "Loading configuration…" with no reason.
+  const [configError, setConfigError] = useState(null);
+  const [modelsError, setModelsError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
 
   const health = usePolling(getHealth, 15000, true);
   const ollamaDown = health.data?.ollama === "down";
@@ -26,19 +30,23 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then((data) => !cancelled && setConfig(data))
-      .catch((e) => !cancelled && setMetaError(e.detail || String(e)));
+      .then((data) => {
+        if (cancelled) return;
+        setConfig(data);
+        setConfigError(null);
+      })
+      .catch((e) => !cancelled && setConfigError(e.detail || String(e)));
     getModels()
       .then((data) => {
         if (cancelled) return;
         setModels(data);
-        setMetaError(null);
+        setModelsError(null);
       })
-      .catch((e) => !cancelled && setMetaError(e.detail || String(e)));
+      .catch((e) => !cancelled && setModelsError(e.detail || String(e)));
     return () => {
       cancelled = true;
     };
-  }, [ollamaUp]);
+  }, [ollamaUp, attempt]);
 
   function openJob(job) {
     setActiveJob({ id: job.id, service: job.service });
@@ -60,7 +68,11 @@ export default function App() {
     setActiveJob(null);
   }
 
-  const formProps = { config, models, ollamaDown, onSubmitted: submitted };
+  const reloadMeta = () => setAttempt((n) => n + 1);
+
+  const formProps = {
+    config, models, ollamaDown, configError, onRetryMeta: reloadMeta, onSubmitted: submitted,
+  };
 
   return (
     <div className="app">
@@ -70,7 +82,11 @@ export default function App() {
         <Sidebar active={activeTab} onSelect={selectPipeline} />
 
         <main className="workspace">
-          {metaError && !ollamaDown && <p className="inline-error">{metaError}</p>}
+          {/* While Ollama is down the header banner already says so; a second copy of
+              the same 503 in the workspace is noise. */}
+          {modelsError && !ollamaDown && (
+            <p className="inline-error">Model list unavailable — {modelsError}</p>
+          )}
 
           {activeJob ? (
             // Keyed so switching jobs resets the detail rather than briefly showing

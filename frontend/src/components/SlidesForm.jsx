@@ -5,7 +5,7 @@ import { fileSize, languageLabel } from "../format.js";
 
 const MAX_BYTES = 200 * 1024 * 1024;
 
-export default function SlidesForm({ config, models, ollamaDown, onSubmitted }) {
+export default function SlidesForm({ config, models, ollamaDown, configError, onRetryMeta, onSubmitted }) {
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [action, setAction] = useState("summary");
@@ -78,7 +78,20 @@ export default function SlidesForm({ config, models, ollamaDown, onSubmitted }) 
     }
   }
 
-  if (!config) return <p className="empty">Loading configuration…</p>;
+  if (!config) {
+    return configError ? (
+      <div className="form">
+        <p className="inline-error">Configuration unavailable — {configError}</p>
+        <div className="row">
+          <button type="button" className="secondary-button" onClick={onRetryMeta}>
+            Try again
+          </button>
+        </div>
+      </div>
+    ) : (
+      <p className="empty">Loading configuration…</p>
+    );
+  }
 
   const selectedAction = config.actions.find((option) => option.value === action);
 

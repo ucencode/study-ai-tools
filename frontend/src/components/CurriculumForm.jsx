@@ -10,7 +10,7 @@ const STEPS = [
   { id: "generate", label: "Generate" },
 ];
 
-export default function CurriculumForm({ config, models, ollamaDown, onSubmitted }) {
+export default function CurriculumForm({ config, models, ollamaDown, configError, onRetryMeta, onSubmitted }) {
   const [curriculum, setCurriculum] = useState("");
   const [sourceName, setSourceName] = useState("curriculum.txt");
   const [model, setModel] = useState("");
@@ -38,7 +38,9 @@ export default function CurriculumForm({ config, models, ollamaDown, onSubmitted
     try {
       const quiz = await createQuiz(curriculum, model);
       setQuestions(quiz.questions);
-      setAnswers(quiz.questions.map((question) => ({ id: question.id, known: false })));
+      // Deliberately empty: `known` is a boolean, so pre-filling it would submit an
+      // answer the reader never gave. Skipping calibration is its own button.
+      setAnswers([]);
       setStep("calibration");
     } catch (e) {
       setError(e.detail || String(e));
@@ -82,12 +84,26 @@ export default function CurriculumForm({ config, models, ollamaDown, onSubmitted
   }
 
   function answer(id, known) {
-    setAnswers((previous) =>
-      previous.map((entry) => (entry.id === id ? { ...entry, known } : entry)),
-    );
+    setAnswers((previous) => [
+      ...previous.filter((entry) => entry.id !== id),
+      { id, known },
+    ]);
   }
 
-  if (!config) return <p className="empty">Loading configuration…</p>;
+  if (!config) {
+    return configError ? (
+      <div className="form">
+        <p className="inline-error">Configuration unavailable — {configError}</p>
+        <div className="row">
+          <button type="button" className="secondary-button" onClick={onRetryMeta}>
+            Try again
+          </button>
+        </div>
+      </div>
+    ) : (
+      <p className="empty">Loading configuration…</p>
+    );
+  }
 
   const selectedMode = config.modes.find((option) => option.value === mode);
 

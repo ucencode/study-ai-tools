@@ -109,6 +109,28 @@ pm_install() {
     esac
 }
 
+# A model Ollama has but config/models.toml does not mention is "unlisted": usable if
+# you name it, never *offered* for a role. Pulling one without classifying it means
+# downloading gigabytes the pickers then refuse to show, so --models does both.
+classify() {  # classify <model> <role>...
+    local name="$1"; shift
+    local roles where="local"
+    roles=$(printf '"%s", ' "$@"); roles="${roles%, }"
+    case "$name" in *-cloud|*:cloud) where="cloud" ;; esac
+
+    if [ ! -f config/models.toml ]; then
+        warn "no config/models.toml to add $name to"
+        return
+    fi
+    if grep -q "^name = \"$name\"$" config/models.toml; then
+        skip "$name is already classified"
+        return
+    fi
+    printf '\n[[models]]\nname = "%s"\nroles = [%s]\nwhere = "%s"\n' \
+        "$name" "$roles" "$where" >> config/models.toml
+    ok "$name classified as $* in config/models.toml"
+}
+
 pm_package() {  # role -> package name for this manager
     case "$1:$PM" in
         libreoffice:apt)  echo "libreoffice-impress" ;;
@@ -239,10 +261,14 @@ else
         if ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$model"; then
             skip "$model already installed"
         elif confirm "Pull $model? (several GB)"; then
-            ollama pull "$model" && ok "$model"
+            ollama pull "$model" || warn "could not pull $model"
         fi
     done
-    NOTES+=("Give pulled models their roles in config/models.toml, or they stay unlisted.")
+    # Roles are known by construction — these two variables *are* the roles.
+    ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$VISION_MODEL" \
+        && classify "$VISION_MODEL" vision
+    ollama list 2>/dev/null | awk '{print $1}' | grep -qx "$TEXT_MODEL" \
+        && classify "$TEXT_MODEL" refine llm
 fi
 
 # ── frontend ─────────────────────────────────────────────────────────────────

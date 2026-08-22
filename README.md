@@ -3,13 +3,29 @@
 Offline AI toolkit that turns slides into structured documents and curricula into study
 material, powered by Ollama. Job-based: submit, get an id, poll, read the output.
 
-See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for the next build.
+See [CLAUDE.md](CLAUDE.md) for architecture and invariants, [TODO.md](TODO.md) for what is left.
+
+## Setup
+
+```sh
+./setup.sh              # installs what is missing, builds the UI, says what to run
+./setup.sh --check      # report what is missing and change nothing
+./setup.sh --models     # also pull a local vision + text model
+```
+
+It asks before anything that needs sudo or downloads. LibreOffice is optional — only
+needed to accept `.pptx` — so it is never installed without an explicit yes: answer the
+prompt, or pass `--libreoffice` / `--no-libreoffice` to decide up front. `--yes` alone
+does not answer it. Re-running is safe; finished steps are skipped.
 
 ## Requirements
 
-- Python 3.14 (defined in `.python-version`)
+Handled by `setup.sh`, or install them yourself:
+
+- Python 3.14 (defined in `.python-version`) — `uv` fetches it
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [Ollama](https://ollama.com), running
+- Node and npm — only to build the UI
 - LibreOffice — optional, only for `.pptx` input
 
 ## Running
@@ -19,8 +35,20 @@ uv sync
 uv run fastapi dev
 ```
 
+With `frontend/dist` built, that one process serves the UI at `/` too.
+
 Set `OLLAMA_HOST` / `OLLAMA_API_KEY` to use a remote Ollama. Cloud models are just model
 names ending in `-cloud`. Run a **single** worker — the job queue lives in the process.
+
+## Tests
+
+```sh
+uv run pytest
+```
+
+Both pipelines end to end, resume, the OCR cache, the conflict responses, the repository
+rules and the model catalogue. Ollama is stubbed, so the suite needs no models and runs in
+well under a second. The web UI has no tests, deliberately — see [TODO.md](TODO.md).
 
 ## CLI
 
@@ -102,7 +130,13 @@ of the document without skipping it.
 ## Models
 
 `config/models.toml` maps model names to roles (`vision`, `refine`, `llm`) and `local`/`cloud`.
-It goes stale as Ollama ships new models — add entries as you pull them.
+**That file is yours and is gitignored — expand it as you pull models.** The checked-in
+`config/model_default.toml` is the starting point and is used when you have not written a
+`models.toml` yet; copy it across to begin:
+
+```sh
+cp config/model_default.toml config/models.toml
+```
 
 An unlisted model is still usable if you name it explicitly, but it is not *suggested* for any
 role: unknown capability is not the same as supporting everything, and offering a text-only

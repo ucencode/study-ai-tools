@@ -5,17 +5,28 @@ listing it here only tells the UI what to offer for each role.
 """
 
 import tomllib
+from pathlib import Path
 
 from app.core import llm
-from app.core.paths import MODELS_FILE
+from app.core.paths import MODELS_DEFAULT_FILE, MODELS_FILE
 
 ROLES = ("vision", "refine", "llm")
 
 
+def _models_file() -> Path:
+    """Your list if you have written one, otherwise the checked-in default.
+
+    Resolved per read rather than at import, so creating config/models.toml takes
+    effect without a restart — the same as editing it does.
+    """
+    return MODELS_FILE if MODELS_FILE.exists() else MODELS_DEFAULT_FILE
+
+
 def _entries() -> list[dict]:
-    if not MODELS_FILE.exists():
+    path = _models_file()
+    if not path.exists():
         return []
-    with MODELS_FILE.open("rb") as file:
+    with path.open("rb") as file:
         return tomllib.load(file).get("models", [])
 
 

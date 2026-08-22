@@ -22,8 +22,12 @@ propose the dumber version first.
 ## Layout
 
 ```
+setup.sh             one-step install; asks before sudo, downloads, or LibreOffice
+tests/               pytest; stubs app.core.llm and runs the real app + worker
 main.py              FastAPI app + lifespan (starts/stops the worker)
-config/models.toml   model → roles + local/cloud
+config/
+  model_default.toml model → roles + local/cloud; the checked-in default, kept minimal
+  models.toml        your list, gitignored — expand it here; used whenever it exists
 app/
   models/            Pydantic records (job schema, params, results)
   repositories/      job.json persistence — generic JobRepository[T] + two thin subclasses
@@ -32,6 +36,11 @@ app/
   core/              llm, catalogue, languages, documents, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
+frontend/            React + Vite UI — plain React, four dependencies, no API client
+  dist/              the build main.py mounts at / (gitignored)
+  src/api.js         one hand-written function per endpoint
+  src/usePolling.js  the only polling primitive
+  src/components/    shell, the two forms, the jobs rail, job detail
 ```
 
 Dependency direction is one-way: `routers → services → repositories → models`, with `core`
@@ -87,38 +96,78 @@ Full mode is the subtle one. It makes **exactly one model call per chapter**:
 Prompts in `app/core/prompts/` are lifted from the original CLI and are the actual product
 value. Don't casually reword them; changing output structure means changing parsing too.
 
+## The frontend
+
+It polls; there is no SSE and no websocket to add back. The design thesis is that the
+backend architecture should leak into the UI in useful ways — one worker, a queue, named
+stages, output growing on disk, chapters declaring dependencies, retry resuming. Hiding
+that behind a generic spinner makes the app worse, not just plainer.
+
+The dependency budget is four: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`. No
+state library, no component library, no icon pack, no web font, and `api.js` is written by
+hand rather than generated. Adding a fifth is a decision, not a detail.
+
+| Rule | Why |
+|---|---|
+| **Polling stops when a job is terminal.** The detail's interval drops to 0 on `completed`/`failed`; the rail keeps polling because jobs also arrive from the CLI. | A loop that never stops is the main way this UI can go wrong. |
+| **Stage checklists are derived from `params.mode` / `params.action`**, never from a list of every stage name. | `material`+`references` and `chapters` are branches. A job must never show both. |
+| **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |
+| **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
+| **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
+| **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
+| **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |
+| **Failures render the raw exception string verbatim**, in a `<pre>`. | `error` is `f"{type(e).__name__}: {e}"`, not prose. Prettifying it in the UI would be inventing detail; friendlier errors are a backend change. |
+
+Connection loss never blanks the screen: the last data stays, marked stale after three
+consecutive failures, and polling keeps retrying.
+
 ## Testing
 
-**There are no committed tests yet.** Everything was verified once by hand with throwaway
-scripts that were never checked in. [TODO.md](TODO.md) specs the next build (the frontend)
-and lists this as the standing gap.
-
-Stub the `llm` module rather than mocking Ollama; services call it by module reference, so
-patching the attributes works regardless of import order:
-
-```python
-from app.core import llm
-async def fake_complete(*, model, messages, options=None, think=None): ...
-async def fake_stream(*, model, messages, options=None, think=None): yield "text"
-llm.complete, llm.stream_chat = fake_complete, fake_stream
+```sh
+uv run pytest
 ```
 
-`TestClient(main.app)` runs the real lifespan, so the worker actually executes queued jobs —
-poll the job endpoint until terminal. Set `PYTHONPATH` to the repo root; `uv run` must be
-invoked from the project directory or it won't find the venv.
+`tests/` covers both pipelines end to end, resume, the OCR cache, the 409s, the repository
+rules and the catalogue — in well under a second, because nothing talks to Ollama.
+
+The frontend has none: a runner would spend the dependency budget above, so its behaviour
+was walked with throwaway Playwright scripts that were not committed.
+
+Four things `tests/conftest.py` sets up, each for a reason worth keeping:
+
+| Fixture | Why it exists |
+|---|---|
+| `fake_llm` | Stubs the five functions in `app.core.llm`. Services call them by module reference, so patching attributes works regardless of import order — mock the transport instead and you are testing the ollama client. |
+| `client` | `TestClient(main.app)` runs the real lifespan, so the worker actually executes queued jobs. Poll the job endpoint until terminal. |
+| `progress_log` | Spies on `set_progress`. Polling for stage transitions races the worker; the repository sees every one of them. |
+| `clean_jobs` | Wipes the jobs directory between tests. Not tidiness: the OCR cache scans *completed* jobs, so a leftover would turn the next test's OCR into a silent no-op. |
+
+`conftest` redirects `app.core.paths` into a temp dir at import, before anything else is
+imported — a `JobRepository` binds its directory in `__init__`, and the routers instantiate
+their services at import time.
 
 Real PDFs are cheap to make: `pypdfium2.PdfDocument.new()`, `new_page(w, h)`, `save(path)`.
 Use *different* page sizes per fixture, or the content-hash OCR cache will make the second
-job a no-op and quietly invalidate the test.
+job a no-op and quietly invalidate the test — the `pdf` fixture offsets them for you.
 
 ## Running
 
 ```sh
+./setup.sh                                   # or do the next two yourself
 uv sync
 uv run fastapi dev
 uv run python -m app.cli curriculum syllabus.txt --mode full --no-plan
 uv run python -m app.cli curriculum --resume <job-id>
+cd frontend && npm install && npm run build  # then fastapi serves the UI at :8000
+cd frontend && npm run dev                   # :5173, proxies /api — for UI work only
 ```
+
+`main.py` mounts `frontend/dist` at `/` when it exists, so a built UI needs one process.
+The mount is guarded: `dist/` is gitignored, and a fresh clone must still start.
+
+`setup.sh` does all of the above on a new machine and is safe to re-run. It installs
+nothing that needs sudo without a yes, and LibreOffice — optional, `.pptx` only — needs
+an explicit one: the prompt defaults to no and `--yes` alone does not answer it.
 
 `OLLAMA_HOST` / `OLLAMA_API_KEY` point at a remote Ollama. Cloud models are just names
 ending `-cloud` or `:cloud`. LibreOffice is optional and only needed for `.pptx`.

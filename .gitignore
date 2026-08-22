@@ -4,3 +4,6 @@ __pycache__/
 .venv/
 
 data/
+
+# Your model list. config/model_default.toml is the checked-in starting point.
+config/models.toml

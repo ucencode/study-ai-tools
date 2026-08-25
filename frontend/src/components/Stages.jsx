@@ -8,6 +8,12 @@ export const STATUS_LABEL = {
   completed: "Completed",
   failed: "Failed",
 };
+export const STATUS_COLOUR = {
+  queued: "text-waiting",
+  processing: "text-processing",
+  completed: "text-ok",
+  failed: "text-fail",
+};
 
 const STAGE_LABEL = {
   convert: "Convert",
@@ -111,25 +117,35 @@ export function statusLine(job) {
 export default function Stages({ job }) {
   // Nothing has run yet, so there is no progress to draw.
   if (job.status === "queued") {
-    return <p className="waiting">○ Waiting for the worker</p>;
+    return <p className="text-sm text-waiting">○ Waiting for the worker</p>;
   }
 
   return (
-    <ul className="stages">
+    <ul className="grid gap-2 max-w-[340px]">
       {stageStates(job).map(({ name, label, state, counts }) => (
-        <li key={name} className={`stage stage-${state}`}>
-          <span className="stage-glyph">
+        // `data-state` is what the glyph and label colour off, so the row states
+        // stay in one place instead of being recomputed per child.
+        <li
+          key={name}
+          data-state={state}
+          className="group grid grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-1
+                     text-sm data-[state=pending]:text-muted"
+        >
+          <span className="text-waiting group-data-[state=done]:text-ok group-data-[state=active]:text-processing">
             {state === "done" ? "✓" : state === "active" ? "●" : "○"}
           </span>
-          <span className="stage-label">{label}</span>
+          <span className="group-data-[state=active]:font-medium">{label}</span>
           {counts && counts.total > 1 && (
-            <span className="stage-count mono">
+            <span className="text-xs text-muted font-mono">
               {counts.current} / {counts.total}
             </span>
           )}
           {state === "active" && counts && counts.total > 1 && (
-            <span className="stage-bar">
-              <span style={{ width: `${(counts.current / counts.total) * 100}%` }} />
+            <span className="col-start-2 -col-end-1 h-[3px] rounded-sm bg-line overflow-hidden">
+              <span
+                className="block h-full bg-processing"
+                style={{ width: `${(counts.current / counts.total) * 100}%` }}
+              />
             </span>
           )}
         </li>

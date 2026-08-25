@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { deletePreset, listPresets, savePreset } from "../api.js";
+import { INLINE_ERROR, MUTED, QUIET, ROW, SECONDARY_BUTTON } from "../styles.js";
 
 /**
  * Saved settings for one service. Applying a preset fills the form below and is then
@@ -68,10 +69,14 @@ export default function PresetBar({ service, settings, onApply }) {
   const existing = presets.some((entry) => entry.name.toLowerCase() === name.trim().toLowerCase());
 
   return (
-    <div className="preset-bar">
-      <div className="row">
-        <span className="preset-label">Preset</span>
-        <select value={selected} onChange={(event) => apply(event.target.value)}>
+    <div className="flex flex-col gap-2 px-3.5 py-3 border border-line rounded-md bg-panel">
+      <div className={ROW}>
+        <span className="min-w-12 text-xs font-medium text-muted">Preset</span>
+        <select
+          className="max-w-[260px]"
+          value={selected}
+          onChange={(event) => apply(event.target.value)}
+        >
           <option value="">
             {presets.length ? "Choose a saved setup…" : "No saved setups yet"}
           </option>
@@ -83,7 +88,7 @@ export default function PresetBar({ service, settings, onApply }) {
         </select>
         <button
           type="button"
-          className="quiet"
+          className={QUIET}
           disabled={!selected || busy}
           onClick={remove}
         >
@@ -91,9 +96,10 @@ export default function PresetBar({ service, settings, onApply }) {
         </button>
       </div>
 
-      <div className="row">
+      <div className={ROW}>
         <input
           type="text"
+          className="max-w-[260px]"
           value={name}
           maxLength={80}
           placeholder="Name this setup"
@@ -101,7 +107,7 @@ export default function PresetBar({ service, settings, onApply }) {
         />
         <button
           type="button"
-          className="secondary-button"
+          className={SECONDARY_BUTTON}
           disabled={!name.trim() || busy}
           onClick={save}
         >
@@ -109,8 +115,8 @@ export default function PresetBar({ service, settings, onApply }) {
         </button>
       </div>
 
-      {error && <p className="inline-error">{error}</p>}
-      <p className="secondary">
+      {error && <p className={INLINE_ERROR}>{error}</p>}
+      <p className={MUTED}>
         A preset holds every option below, never the input. Applying one fills the form —
         change anything you like before starting.
       </p>

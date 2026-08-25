@@ -8,6 +8,7 @@ import JobDetail from "./components/JobDetail.jsx";
 import JobList from "./components/JobList.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import SlidesForm from "./components/SlidesForm.jsx";
+import { INLINE_ERROR } from "./styles.js";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState(SLIDES);
@@ -75,17 +76,17 @@ export default function App() {
   };
 
   return (
-    <div className="app">
+    <div className="flex flex-col h-full max-rail:h-auto max-rail:min-h-full">
       <Header health={health.data} onRetry={health.refresh} />
 
-      <div className="columns">
+      <div className="flex-1 min-h-0 grid grid-cols-[180px_minmax(600px,1fr)_310px] max-rail:grid-cols-1">
         <Sidebar active={activeTab} onSelect={selectPipeline} />
 
-        <main className="workspace">
+        <main className="overflow-y-auto min-h-0 max-rail:overflow-y-visible bg-panel px-6 pt-5 pb-10">
           {/* While Ollama is down the header banner already says so; a second copy of
               the same 503 in the workspace is noise. */}
           {modelsError && !ollamaDown && (
-            <p className="inline-error">Model list unavailable — {modelsError}</p>
+            <p className={INLINE_ERROR}>Model list unavailable — {modelsError}</p>
           )}
 
           {activeJob ? (

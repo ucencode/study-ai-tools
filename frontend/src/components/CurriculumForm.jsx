@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 
 import { CURRICULUM, createCurriculumJob, createQuiz, modelsForRole } from "../api.js";
 import { languageLabel } from "../format.js";
+import { INLINE_ERROR, INLINE_WARNING, MUTED, PRIMARY, QUIET, ROW, SECONDARY_BUTTON } from "../styles.js";
 import PresetBar from "./PresetBar.jsx";
 import Quiz from "./Quiz.jsx";
+
+const FORM = "flex flex-col gap-3.5 max-w-[780px]";
 
 const STEPS = [
   { id: "source", label: "Source" },
@@ -109,29 +112,29 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
 
   if (!config) {
     return configError ? (
-      <div className="form">
-        <p className="inline-error">Configuration unavailable — {configError}</p>
-        <div className="row">
-          <button type="button" className="secondary-button" onClick={onRetryMeta}>
+      <div className={FORM}>
+        <p className={INLINE_ERROR}>Configuration unavailable — {configError}</p>
+        <div className={ROW}>
+          <button type="button" className={SECONDARY_BUTTON} onClick={onRetryMeta}>
             Try again
           </button>
         </div>
       </div>
     ) : (
-      <p className="empty">Loading configuration…</p>
+      <p className="text-sm text-muted">Loading configuration…</p>
     );
   }
 
   const selectedMode = config.modes.find((option) => option.value === mode);
 
   return (
-    <div className="form">
-      <h2 className="workspace-title">Curriculum generator</h2>
+    <div className={FORM}>
+      <h2 className="text-base font-semibold">Curriculum generator</h2>
 
-      <ol className="steps">
+      <ol className="steps flex gap-3 text-xs text-muted">
         {STEPS.map((entry, index) => (
-          <li key={entry.id} className={step === entry.id ? "current" : ""}>
-            <span className="mono">{index + 1}</span> {entry.label}
+          <li key={entry.id} className={step === entry.id ? "text-fg font-medium" : ""}>
+            <span className="font-mono">{index + 1}</span> {entry.label}
           </li>
         ))}
       </ol>
@@ -147,19 +150,19 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
           onDragOver={(event) => event.preventDefault()}
           onDrop={readDroppedFile}
         />
-        <span className="secondary">Source name · {sourceName}</span>
+        <span className={MUTED}>Source name · {sourceName}</span>
       </label>
 
       <PresetBar service={CURRICULUM} settings={settings} onApply={applySettings} />
 
       {missingModel && (
-        <p className="inline-warning">
+        <p className={INLINE_WARNING}>
           ⚠ That preset asks for {missingModel}, which is not installed. The current
           selection was kept.
         </p>
       )}
 
-      <div className="fields">
+      <div className="flex flex-col gap-3">
         <label className="field">
           <span>Model</span>
           <select value={model} onChange={(event) => setModel(event.target.value)}>
@@ -170,7 +173,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
             ))}
           </select>
           {fallback && llmModels.length > 0 && (
-            <span className="inline-warning">
+            <span className={INLINE_WARNING}>
               ⚠ No installed model is marked <code>llm</code> in config/models.toml. Showing all
               models.
             </span>
@@ -186,7 +189,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
               </option>
             ))}
           </select>
-          {selectedMode && <span className="secondary">{selectedMode.description}</span>}
+          {selectedMode && <span className={MUTED}>{selectedMode.description}</span>}
         </label>
 
         <label className="field">
@@ -201,22 +204,23 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         </label>
       </div>
 
-      <label className="checkbox">
+      <label className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 text-sm">
         <input
           type="checkbox"
+          className="mt-[3px]"
           checked={includePlan}
           onChange={(event) => setIncludePlan(event.target.checked)}
         />
         <span>
           Include the study plan in the document
-          <span className="secondary">
+          <span className="block mt-0.5 text-xs text-muted">
             The study plan is generated either way. This controls only whether it appears in
             the final document.
           </span>
         </span>
       </label>
 
-      {error && <p className="inline-error">{error}</p>}
+      {error && <p className={INLINE_ERROR}>{error}</p>}
 
       {step === "calibration" ? (
         <Quiz
@@ -228,13 +232,13 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
           busy={busy}
         />
       ) : (
-        <div className="row">
-          <button type="button" className="primary" disabled={!ready || busy} onClick={loadQuiz}>
+        <div className={ROW}>
+          <button type="button" className={PRIMARY} disabled={!ready || busy} onClick={loadQuiz}>
             {busy ? "Working…" : "Continue to calibration"}
           </button>
           <button
             type="button"
-            className="quiet"
+            className={QUIET}
             disabled={!ready || busy}
             onClick={() => submit(false)}
           >

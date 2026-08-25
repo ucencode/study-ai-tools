@@ -38,8 +38,10 @@ app/
   core/              llm, catalogue, languages, documents, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
-frontend/            React + Vite UI — plain React, four dependencies, no API client
+frontend/            React + Vite + Tailwind UI — plain React, six dependencies, no API client
   dist/              the build main.py mounts at / (gitignored)
+  src/styles.css     colour tokens, @theme bridge, control base — nothing per-component
+  src/styles.js      the few class strings used four or more times
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
   src/components/    shell, the two forms, the preset bar, the jobs rail, job detail
@@ -106,12 +108,15 @@ backend architecture should leak into the UI in useful ways — one worker, a qu
 stages, output growing on disk, chapters declaring dependencies, retry resuming. Hiding
 that behind a generic spinner makes the app worse, not just plainer.
 
-The dependency budget is four: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`. No
-state library, no component library, no icon pack, no web font, and `api.js` is written by
-hand rather than generated. Adding a fifth is a decision, not a detail.
+The dependency budget is six: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`,
+`tailwindcss`, `@tailwindcss/vite`. Tailwind bought locality — a component's look is read
+and changed where its markup is, instead of somewhere in a 510-line stylesheet. No state
+library, no component library, no icon pack, no web font, and `api.js` is written by hand
+rather than generated. Adding a seventh is a decision, not a detail.
 
 | Rule | Why |
 |---|---|
+| **Colour lives in `:root` vars, bridged by `@theme inline`.** Components use `bg-panel` / `text-muted`, never a hex and never `dark:`. | `inline` makes the utility emit `var(--panel)`, so the `prefers-color-scheme` block still swaps every colour in one place. |
 | **Polling stops when a job is terminal.** The detail's interval drops to 0 on `completed`/`failed`; the rail keeps polling because jobs also arrive from the CLI. | A loop that never stops is the main way this UI can go wrong. |
 | **Stage checklists are derived from `params.mode` / `params.action`**, never from a list of every stage name. | `material`+`references` and `chapters` are branches. A job must never show both. |
 | **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |

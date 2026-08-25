@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { getOutput } from "../api.js";
 import { clockTime } from "../format.js";
 import { usePolling } from "../usePolling.js";
+import { MUTED, QUIET } from "../styles.js";
 
 const PINNED_SLACK = 40; // px from the bottom that still counts as "at the bottom"
 
@@ -47,17 +48,17 @@ export default function Output({ job }) {
 
   return (
     <section className="panel-section">
-      <div className="section-head">
-        <h3 className="section-heading">Job output</h3>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-semibold">Job output</h3>
         {content && (
-          <button type="button" className="quiet" onClick={copy}>
+          <button type="button" className={QUIET} onClick={copy}>
             {copied ? "Copied" : "Copy"}
           </button>
         )}
       </div>
 
       {job.status === "processing" && (
-        <p className="secondary">
+        <p className={MUTED}>
           Updating while the job runs
           {lastUpdated && !stale && <> · last update {clockTime(lastUpdated)}</>}
           {stale && <> · connection unavailable</>}
@@ -65,11 +66,17 @@ export default function Output({ job }) {
       )}
 
       {content ? (
-        <div className="output" ref={box} onScroll={onScroll}>
-          <pre>{content}</pre>
+        <div
+          className="max-h-[55vh] overflow-auto border border-line rounded-md bg-canvas px-3.5 py-3"
+          ref={box}
+          onScroll={onScroll}
+        >
+          <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {content}
+          </pre>
         </div>
       ) : (
-        <p className="empty">
+        <p className="text-sm text-muted">
           {running ? "Nothing written yet." : "This job produced no output."}
         </p>
       )}

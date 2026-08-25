@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-import { createSlideJob, modelsForRole } from "../api.js";
+import { SLIDES, createSlideJob, modelsForRole } from "../api.js";
 import { fileSize, languageLabel } from "../format.js";
+import PresetBar from "./PresetBar.jsx";
 
 const MAX_BYTES = 200 * 1024 * 1024;
 
@@ -16,6 +17,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
   const [dpi, setDpi] = useState(200);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+  const [missingModels, setMissingModels] = useState([]);
   const picker = useRef(null);
 
   const vision = modelsForRole(models, "vision");
@@ -30,6 +32,37 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
   const pptxEnabled = config?.pptx_enabled;
   const refining = action !== "skip";
   const audienceApplies = action === "summary" || action === "deep";
+
+  // What a preset stores: the form's own state, and nothing about the deck.
+  const settings = {
+    dpi: Number(dpi) || 200,
+    ocr_model: ocrModel,
+    action,
+    refine_model: refineModel || null,
+    lang,
+    level: level || null,
+  };
+
+  function applySettings(preset) {
+    // A preset can name a model that is no longer installed — the catalogue is a hint,
+    // not a whitelist. Keep the working selection and say so rather than submit nothing.
+    const missing = [];
+    const keep = (options, wanted, current) => {
+      if (!wanted) return current;
+      if (options.includes(wanted)) return wanted;
+      missing.push(wanted);
+      return current;
+    };
+
+    setOcrModel(keep(vision.options, preset.ocr_model, ocrModel));
+    setRefineModel(keep(refine.options, preset.refine_model, refineModel));
+    setAction(preset.action);
+    setLang(preset.lang);
+    setDpi(preset.dpi);
+    if (preset.level) setLevel(preset.level);
+    setMissingModels(missing);
+    setError(null);
+  }
 
   function choose(candidate) {
     setError(null);
@@ -144,6 +177,15 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
       {!pptxEnabled && (
         <p className="inline-warning">
           LibreOffice not installed — PPTX input unavailable. PDF still works.
+        </p>
+      )}
+
+      <PresetBar service={SLIDES} settings={settings} onApply={applySettings} />
+
+      {missingModels.length > 0 && (
+        <p className="inline-warning">
+          ⚠ That preset asks for {missingModels.join(", ")}, which is not installed. The
+          current selection was kept.
         </p>
       )}
 

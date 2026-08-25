@@ -31,7 +31,9 @@ config/
 app/
   models/            Pydantic records (job schema, params, results)
   repositories/      job.json persistence — generic JobRepository[T] + two thin subclasses
+                     plus PresetRepository[T] over data/presets/{service}/
   services/          the pipelines; the layer both the API and CLI call
+    preset.py        saved settings — every preset rule lives here, not in a router
   routers/           HTTP only — validate, delegate, map exceptions to status codes
   core/              llm, catalogue, languages, documents, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
@@ -40,7 +42,7 @@ frontend/            React + Vite UI — plain React, four dependencies, no API 
   dist/              the build main.py mounts at / (gitignored)
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
-  src/components/    shell, the two forms, the jobs rail, job detail
+  src/components/    shell, the two forms, the preset bar, the jobs rail, job detail
 ```
 
 Dependency direction is one-way: `routers → services → repositories → models`, with `core`
@@ -60,6 +62,7 @@ Break these and things quietly rot.
 | **One uvicorn worker.** | The queue lives in the process. `--workers 2` silently creates two queues feeding one GPU. |
 | **The OCR cache keys on `source_sha256`, never `filename`.** | Two people uploading `lecture.pdf` are not uploading the same lecture. |
 | **`MATERIAL_TOPIC_STABLE` must be byte-identical across every chapter of a job.** | Ollama's prompt prefix cache only hits on an exact prefix match. Putting anything varying above it silently doubles the cost of full mode. |
+| **A preset stores settings, never the input.** Params is the settings model plus the source, so a new option is presettable by default. | A saved setup that carried a document would resubmit the wrong file. Applying one fills the form and is discarded — `job.json` never names a preset. |
 | **`catalogue.for_role()` returns only explicitly classified models.** | An unknown model is an unknown capability. Offering a text-only model as an OCR choice is worse than offering nothing. |
 
 ### Schema migration
@@ -115,6 +118,7 @@ hand rather than generated. Adding a fifth is a decision, not a detail.
 | **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
 | **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
 | **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
+| **Applying a preset only fills the form.** The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
 | **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |
 | **Failures render the raw exception string verbatim**, in a `<pre>`. | `error` is `f"{type(e).__name__}: {e}"`, not prose. Prettifying it in the UI would be inventing detail; friendlier errors are a backend change. |
 
@@ -128,7 +132,8 @@ uv run pytest
 ```
 
 `tests/` covers both pipelines end to end, resume, the OCR cache, the 409s, the repository
-rules and the catalogue — in well under a second, because nothing talks to Ollama.
+rules, the catalogue, and presets — the last through the service directly, since that is
+what the CLI will call — in well under a second, because nothing talks to Ollama.
 
 The frontend has none: a runner would spend the dependency budget above, so its behaviour
 was walked with throwaway Playwright scripts that were not committed.
@@ -140,7 +145,7 @@ Four things `tests/conftest.py` sets up, each for a reason worth keeping:
 | `fake_llm` | Stubs the five functions in `app.core.llm`. Services call them by module reference, so patching attributes works regardless of import order — mock the transport instead and you are testing the ollama client. |
 | `client` | `TestClient(main.app)` runs the real lifespan, so the worker actually executes queued jobs. Poll the job endpoint until terminal. |
 | `progress_log` | Spies on `set_progress`. Polling for stage transitions races the worker; the repository sees every one of them. |
-| `clean_jobs` | Wipes the jobs directory between tests. Not tidiness: the OCR cache scans *completed* jobs, so a leftover would turn the next test's OCR into a silent no-op. |
+| `clean_jobs` | Wipes the jobs directory between tests. Not tidiness: the OCR cache scans *completed* jobs, so a leftover would turn the next test's OCR into a silent no-op. `clean_presets` does the same for presets, so a leftover cannot skew a listing. |
 
 `conftest` redirects `app.core.paths` into a temp dir at import, before anything else is
 imported — a `JobRepository` binds its directory in `__init__`, and the routers instantiate

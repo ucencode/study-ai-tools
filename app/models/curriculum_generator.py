@@ -18,8 +18,12 @@ class Answer(Strict):
     known: bool
 
 
-class CurriculumGeneratorParams(Strict):
-    source_name: str
+class CurriculumGeneratorSettings(Strict):
+    """The part of a run a preset can fix: everything except the curriculum itself.
+
+    Params is this plus the source, so a new option is presettable by default.
+    """
+
     model: str
     lang: str = "auto"
     mode: GenerationMode = "short"
@@ -27,6 +31,10 @@ class CurriculumGeneratorParams(Strict):
     # The plan is always generated — it produces the chapter order. This only controls
     # whether it is rendered into the final document.
     include_plan: bool = True
+
+
+class CurriculumGeneratorParams(CurriculumGeneratorSettings):
+    source_name: str
 
     # Extra direction per topic, keyed by topic name.
     topic_context: dict[str, str] = {}

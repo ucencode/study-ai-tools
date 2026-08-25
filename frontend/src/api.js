@@ -99,3 +99,12 @@ export const createQuiz = (curriculum, model) =>
   json("/curriculum-generator/quiz", { curriculum, model });
 
 export const createCurriculumJob = (payload) => json("/curriculum-generator/jobs", payload);
+
+// Presets are settings only — never the deck, the curriculum, or the quiz.
+export const listPresets = (service) => request(`/${servicePath(service)}/presets`);
+
+export const savePreset = (service, name, settings) =>
+  json(`/${servicePath(service)}/presets`, { name, settings });
+
+export const deletePreset = (service, id) =>
+  request(`/${servicePath(service)}/presets/${id}`, { method: "DELETE" });

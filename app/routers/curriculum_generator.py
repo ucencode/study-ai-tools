@@ -2,14 +2,18 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from app.core import llm
+from app.models._job import Strict
 from app.models.curriculum_generator import (
     Answer,
     CurriculumGeneratorJob,
     CurriculumGeneratorParams,
+    CurriculumGeneratorSettings,
     GenerationMode,
     Question,
 )
+from app.models.preset import Preset
 from app.services.curriculum_generator import CurriculumGeneratorService
+from app.services.preset import CURRICULUM_PRESETS, MAX_NAME
 from app.worker import enqueue
 
 router = APIRouter(prefix="/api/curriculum-generator", tags=["curriculum-generator"])
@@ -105,4 +109,32 @@ async def delete_job(job_id: str) -> Response:
         # rmtree under a running job pulls files out from beneath the worker.
         raise HTTPException(409, f"job {job_id} is {job.status} — wait for it to finish")
     service.delete(job_id)
+    return Response(status_code=204)
+
+
+class PresetRequest(Strict):
+    name: str = Field(min_length=1, max_length=MAX_NAME)
+    settings: CurriculumGeneratorSettings
+
+
+@router.get("/presets")
+async def list_presets() -> list[Preset[CurriculumGeneratorSettings]]:
+    return CURRICULUM_PRESETS.list()
+
+
+@router.post("/presets")
+async def save_preset(body: PresetRequest) -> Preset[CurriculumGeneratorSettings]:
+    """Create, or overwrite the preset of the same name."""
+    try:
+        return CURRICULUM_PRESETS.save(body.name, body.settings)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.delete("/presets/{preset_id}", status_code=204)
+async def delete_preset(preset_id: str) -> Response:
+    try:
+        CURRICULUM_PRESETS.delete(preset_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
     return Response(status_code=204)

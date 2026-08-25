@@ -151,6 +151,27 @@ code { font-size: 0.92em; }
 
 /* ── forms ───────────────────────────────────────────────────────────────── */
 
+/* Saved settings. Sits directly above the fields it fills, so "applying" is visible. */
+.preset-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.preset-bar .preset-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--secondary);
+  min-width: 48px;
+}
+
+.preset-bar select, .preset-bar input[type="text"] { max-width: 260px; }
+.preset-bar .secondary { font-size: 12px; }
+
 .form { display: flex; flex-direction: column; gap: 14px; max-width: 780px; }
 
 .fields { display: flex; flex-direction: column; gap: 12px; }

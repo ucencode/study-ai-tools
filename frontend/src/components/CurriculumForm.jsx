@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { createCurriculumJob, createQuiz, modelsForRole } from "../api.js";
+import { CURRICULUM, createCurriculumJob, createQuiz, modelsForRole } from "../api.js";
 import { languageLabel } from "../format.js";
+import PresetBar from "./PresetBar.jsx";
 import Quiz from "./Quiz.jsx";
 
 const STEPS = [
@@ -22,6 +23,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
   const [answers, setAnswers] = useState([]);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [missingModel, setMissingModel] = useState(null);
 
   const { options: llmModels, fallback } = modelsForRole(models, "llm");
   const firstModel = llmModels[0];
@@ -31,6 +33,21 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
   }, [model, firstModel]);
 
   const ready = curriculum.trim().length > 0 && model && !ollamaDown;
+
+  // What a preset stores: the form's own options, and nothing about the curriculum.
+  const settings = { model, lang, mode, include_plan: includePlan };
+
+  function applySettings(preset) {
+    // A preset can name a model that is no longer installed — the catalogue is a hint,
+    // not a whitelist. Keep the working selection and say so rather than submit nothing.
+    const known = llmModels.includes(preset.model);
+    if (known) setModel(preset.model);
+    setMissingModel(known ? null : preset.model);
+    setMode(preset.mode);
+    setLang(preset.lang);
+    setIncludePlan(preset.include_plan);
+    setError(null);
+  }
 
   async function loadQuiz() {
     setBusy(true);
@@ -132,6 +149,15 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         />
         <span className="secondary">Source name · {sourceName}</span>
       </label>
+
+      <PresetBar service={CURRICULUM} settings={settings} onApply={applySettings} />
+
+      {missingModel && (
+        <p className="inline-warning">
+          ⚠ That preset asks for {missingModel}, which is not installed. The current
+          selection was kept.
+        </p>
+      )}
 
       <div className="fields">
         <label className="field">

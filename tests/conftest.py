@@ -24,6 +24,7 @@ from app.core import paths
 _ROOT = Path(tempfile.mkdtemp(prefix="study-ai-tests-"))
 paths.DATA_DIR = _ROOT
 paths.JOBS_DIR = _ROOT / "jobs"
+paths.PRESETS_DIR = _ROOT / "presets"
 paths.TMP_DIR = _ROOT / "tmp"
 
 from app.core import llm  # noqa: E402
@@ -184,6 +185,19 @@ def clean_jobs():
 
 def _wipe():
     for directory in paths.JOBS_DIR.glob("*"):
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def clean_presets():
+    """Every test starts with no presets, so a leftover cannot skew another's listing."""
+    _wipe_presets()
+    yield
+    _wipe_presets()
+
+
+def _wipe_presets():
+    for directory in paths.PRESETS_DIR.glob("*"):
         shutil.rmtree(directory, ignore_errors=True)
 
 

@@ -2,15 +2,20 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
+from pydantic import Field
 
 from app.core import documents
 from app.core.paths import TMP_DIR
+from app.models._job import Strict
+from app.models.preset import Preset
 from app.models.slide_summarizer import (
     AudienceLevel,
     RefineAction,
     SlideSummarizerJob,
     SlideSummarizerParams,
+    SlideSummarizerSettings,
 )
+from app.services.preset import MAX_NAME, SLIDE_PRESETS
 from app.services.slide_summarizer import SlideSummarizerService
 from app.worker import enqueue
 
@@ -116,4 +121,32 @@ async def delete_job(job_id: str) -> Response:
         # rmtree under a running job pulls files out from beneath the worker.
         raise HTTPException(409, f"job {job_id} is {job.status} — wait for it to finish")
     service.delete(job_id)
+    return Response(status_code=204)
+
+
+class PresetRequest(Strict):
+    name: str = Field(min_length=1, max_length=MAX_NAME)
+    settings: SlideSummarizerSettings
+
+
+@router.get("/presets")
+async def list_presets() -> list[Preset[SlideSummarizerSettings]]:
+    return SLIDE_PRESETS.list()
+
+
+@router.post("/presets")
+async def save_preset(body: PresetRequest) -> Preset[SlideSummarizerSettings]:
+    """Create, or overwrite the preset of the same name."""
+    try:
+        return SLIDE_PRESETS.save(body.name, body.settings)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@router.delete("/presets/{preset_id}", status_code=204)
+async def delete_preset(preset_id: str) -> Response:
+    try:
+        SLIDE_PRESETS.delete(preset_id)
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
     return Response(status_code=204)

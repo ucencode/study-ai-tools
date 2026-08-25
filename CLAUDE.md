@@ -43,6 +43,7 @@ frontend/            React + Vite + Tailwind UI — plain React, six dependencie
   src/styles.css     colour tokens, @theme bridge, control base — nothing per-component
   src/styles.js      the few class strings used four or more times
   src/useTheme.js    auto/light/dark, stored in localStorage
+  src/useDocumentTitle.js  the tab title; exactly one owner at a time
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
   src/components/    shell, the two forms, the preset bar, the jobs rail, job detail
@@ -124,6 +125,7 @@ rather than generated. Adding a seventh is a decision, not a detail.
 | **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |
 | **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
 | **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
+| **Exactly one component owns the tab title**: JobDetail while a job is open, the jobs rail otherwise. The rail passes `null` when a job is open. | Two writers would race on every poll. The title carries progress because jobs outlive the tab, so a background tab is often the only view of them. |
 | **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
 | **Applying a preset only fills the form.** The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
 | **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |

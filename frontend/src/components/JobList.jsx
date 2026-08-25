@@ -3,8 +3,9 @@ import { useEffect, useState } from "react";
 import { SERVICE_LABEL, listJobs } from "../api.js";
 import { relativeTime } from "../format.js";
 import { QUIET } from "../styles.js";
+import { BASE_TITLE, useDocumentTitle } from "../useDocumentTitle.js";
 import { usePolling } from "../usePolling.js";
-import { STATUS_COLOUR, STATUS_GLYPH, statusLine } from "./Stages.jsx";
+import { STATUS_COLOUR, STATUS_GLYPH, jobLabel, statusLine } from "./Stages.jsx";
 
 const GROUPS = [
   { key: "processing", heading: "Processing", match: (job) => job.status === "processing" },
@@ -17,8 +18,6 @@ const GROUPS = [
 ];
 
 const RAIL_HEADING = "text-xs font-semibold uppercase tracking-wider text-muted";
-
-const labelOf = (job) => job.params.filename || job.params.source_name || job.id;
 
 export default function JobList({ activeJobId, onSelect, refreshToken }) {
   // Only meaningful in the narrow layout, where the rail sits below the workspace.
@@ -34,6 +33,18 @@ export default function JobList({ activeJobId, onSelect, refreshToken }) {
   const jobs = data || [];
   const running = jobs.filter((job) => job.status === "processing").length;
   const waiting = jobs.filter((job) => job.status === "queued").length;
+
+  // Only when no job is open — JobDetail owns the title then, and two writers would race.
+  // Work continues after the tab is left, so a background tab should still show it.
+  useDocumentTitle(
+    activeJobId
+      ? null
+      : running > 0
+        ? `● ${running} running · ${BASE_TITLE}`
+        : waiting > 0
+          ? `○ ${waiting} waiting · ${BASE_TITLE}`
+          : BASE_TITLE,
+  );
 
   return (
     // `data-open` only bites in the narrow layout, where the rail can be collapsed.
@@ -94,7 +105,7 @@ export default function JobList({ activeJobId, onSelect, refreshToken }) {
                       <span className="text-xs uppercase tracking-wide text-muted">
                         {SERVICE_LABEL[job.service]}
                       </span>
-                      <span className="text-sm [overflow-wrap:anywhere]">{labelOf(job)}</span>
+                      <span className="text-sm [overflow-wrap:anywhere]">{jobLabel(job)}</span>
                       <span className={`text-xs ${STATUS_COLOUR[job.status]}`}>
                         <span>{STATUS_GLYPH[job.status]}</span> {statusLine(job)}
                       </span>

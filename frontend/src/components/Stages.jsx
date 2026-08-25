@@ -102,6 +102,19 @@ export function stageStates(job) {
   }));
 }
 
+// Every view names a job the same way: whatever the user actually supplied.
+export const jobLabel = (job) =>
+  job.params.filename || job.params.source_name || job.id;
+
+// A browser tab truncates hard, and this app is built to be left running in the
+// background, so the glyph and the fraction come before the name — those are what
+// survive at six characters. `statusLine` below is the same facts for a UI with room.
+export function tabTitle(job) {
+  const { current, total } = job.progress || {};
+  const count = total > 1 ? `${current}/${total} · ` : "";
+  return `${STATUS_GLYPH[job.status]} ${count}${jobLabel(job)}`;
+}
+
 // The one-line summary used in the jobs rail and the detail header.
 export function statusLine(job) {
   if (job.status === "queued") return "Waiting for the worker";

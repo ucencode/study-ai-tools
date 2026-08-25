@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, CURRICULUM, SERVICE_LABEL, deleteJob, getJob, retryJob } from "../api.js";
 import { clockTime, duration, relativeTime } from "../format.js";
 import { MUTED, QUIET, SECONDARY_BUTTON } from "../styles.js";
+import { useDocumentTitle } from "../useDocumentTitle.js";
 import { usePolling } from "../usePolling.js";
 import Outline from "./Outline.jsx";
 import Output from "./Output.jsx";
@@ -11,7 +12,9 @@ import Stages, {
   STATUS_GLYPH,
   STATUS_LABEL,
   isTerminal,
+  jobLabel,
   statusLine,
+  tabTitle,
 } from "./Stages.jsx";
 
 // Retry means different things per pipeline, and the copy must not lie about it.
@@ -38,6 +41,8 @@ export default function JobDetail({ id, service, onDeleted }) {
   const polling = usePolling(fetcher, pollInterval, true);
   const job = polling.data;
 
+  useDocumentTitle(job ? tabTitle(job) : null);
+
   const status = job?.status;
   useEffect(() => {
     setPollInterval(isTerminal(status) ? 0 : 1500);
@@ -54,7 +59,7 @@ export default function JobDetail({ id, service, onDeleted }) {
   }
 
   const terminal = isTerminal(job.status);
-  const label = job.params.filename || job.params.source_name || job.id;
+  const label = jobLabel(job);
   const ran = duration(job.started_at, job.finished_at);
 
   async function act(kind) {

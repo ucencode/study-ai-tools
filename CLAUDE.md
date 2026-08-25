@@ -38,8 +38,12 @@ app/
   core/              llm, catalogue, languages, documents, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
-frontend/            React + Vite UI — plain React, four dependencies, no API client
+frontend/            React + Vite + Tailwind UI — plain React, six dependencies, no API client
   dist/              the build main.py mounts at / (gitignored)
+  src/styles.css     colour tokens, @theme bridge, control base — nothing per-component
+  src/styles.js      the few class strings used four or more times
+  src/useTheme.js    auto/light/dark, stored in localStorage
+  src/useDocumentTitle.js  the tab title; exactly one owner at a time
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
   src/components/    shell, the two forms, the preset bar, the jobs rail, job detail
@@ -106,17 +110,22 @@ backend architecture should leak into the UI in useful ways — one worker, a qu
 stages, output growing on disk, chapters declaring dependencies, retry resuming. Hiding
 that behind a generic spinner makes the app worse, not just plainer.
 
-The dependency budget is four: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`. No
-state library, no component library, no icon pack, no web font, and `api.js` is written by
-hand rather than generated. Adding a fifth is a decision, not a detail.
+The dependency budget is six: `react`, `react-dom`, `vite`, `@vitejs/plugin-react`,
+`tailwindcss`, `@tailwindcss/vite`. Tailwind bought locality — a component's look is read
+and changed where its markup is, instead of somewhere in a 510-line stylesheet. No state
+library, no component library, no icon pack, no web font, and `api.js` is written by hand
+rather than generated. Adding a seventh is a decision, not a detail.
 
 | Rule | Why |
 |---|---|
+| **Colour lives in `:root` vars, bridged by `@theme inline`.** Components use `bg-panel` / `text-muted`, never a hex and never `dark:`. | `inline` makes the utility emit `var(--panel)`, so one token definition serves both themes. |
+| **Each token is one `light-dark()` pair, and the theme is chosen by `color-scheme` alone.** `auto` removes `data-theme` rather than storing a resolved value. | An override that duplicated the dark palette would be two places to edit. Storing "dark" when the OS said dark would freeze that answer the day the OS changed. |
 | **Polling stops when a job is terminal.** The detail's interval drops to 0 on `completed`/`failed`; the rail keeps polling because jobs also arrive from the CLI. | A loop that never stops is the main way this UI can go wrong. |
 | **Stage checklists are derived from `params.mode` / `params.action`**, never from a list of every stage name. | `material`+`references` and `chapters` are branches. A job must never show both. |
 | **`GET /output` returns the whole file, so the content is replaced.** | Appending would duplicate the document every 3 seconds. |
 | **A finished job is described by what it left behind**, not by `progress`. | The repository clears `progress` on completion, so counts come from `result.pages` / `chapters` vs `outline`. |
 | **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
+| **Exactly one component owns the tab title**: JobDetail while a job is open, the jobs rail otherwise. The rail passes `null` when a job is open. | Two writers would race on every poll. The title carries progress because jobs outlive the tab, so a background tab is often the only view of them. |
 | **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
 | **Applying a preset only fills the form.** The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
 | **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |

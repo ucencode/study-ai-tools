@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { SLIDES, createSlideJob, modelsForRole } from "../api.js";
 import { fileSize, languageLabel } from "../format.js";
+import { INLINE_ERROR, INLINE_WARNING, MUTED, PRIMARY, QUIET, ROW, SECONDARY_BUTTON } from "../styles.js";
 import PresetBar from "./PresetBar.jsx";
 
 const MAX_BYTES = 200 * 1024 * 1024;
+
+const FORM = "flex flex-col gap-3.5 max-w-[780px]";
 
 export default function SlidesForm({ config, models, ollamaDown, configError, onRetryMeta, onSubmitted }) {
   const [file, setFile] = useState(null);
@@ -113,40 +116,43 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
 
   if (!config) {
     return configError ? (
-      <div className="form">
-        <p className="inline-error">Configuration unavailable — {configError}</p>
-        <div className="row">
-          <button type="button" className="secondary-button" onClick={onRetryMeta}>
+      <div className={FORM}>
+        <p className={INLINE_ERROR}>Configuration unavailable — {configError}</p>
+        <div className={ROW}>
+          <button type="button" className={SECONDARY_BUTTON} onClick={onRetryMeta}>
             Try again
           </button>
         </div>
       </div>
     ) : (
-      <p className="empty">Loading configuration…</p>
+      <p className="text-sm text-muted">Loading configuration…</p>
     );
   }
 
   const selectedAction = config.actions.find((option) => option.value === action);
 
   return (
-    <form className="form" onSubmit={submit}>
-      <h2 className="workspace-title">Slide summarizer</h2>
-      <p className="secondary">
+    <form className={FORM} onSubmit={submit}>
+      <h2 className="text-base font-semibold">Slide summarizer</h2>
+      <p className={MUTED}>
         OCR a slide deck page by page, then optionally refine it into a document.
       </p>
 
       {file ? (
-        <div className="file-row">
-          <span className="file-name">{file.name}</span>
-          <span className="secondary">· {fileSize(file.size)} ·</span>
-          <button type="button" className="quiet" onClick={() => picker.current?.click()}>
+        <div className="flex items-center gap-2 border border-line rounded-md px-3 py-2.5 text-sm">
+          <span className="font-medium [overflow-wrap:anywhere]">{file.name}</span>
+          <span className={MUTED}>· {fileSize(file.size)} ·</span>
+          <button type="button" className={QUIET} onClick={() => picker.current?.click()}>
             Change file
           </button>
         </div>
       ) : (
         <button
           type="button"
-          className={`dropzone${dragging ? " dragging" : ""}`}
+          className={`flex flex-col items-center gap-1 px-3.5 py-6.5 border-[1.5px] border-dashed
+                      rounded-md text-sm ${
+            dragging ? "border-accent bg-accent-weak" : "border-line bg-transparent hover:border-accent hover:bg-accent-weak"
+          }`}
           onClick={() => picker.current?.click()}
           onDragOver={(event) => {
             event.preventDefault();
@@ -160,8 +166,9 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
           }}
         >
           <span>Drop a file here, or click to choose</span>
-          <span className="secondary">
-            PDF · <span className={pptxEnabled ? "" : "disabled-option"}>PPTX</span> · max 200 MB
+          <span className={MUTED}>
+            PDF ·{" "}
+            <span className={pptxEnabled ? "" : "text-line line-through"}>PPTX</span> · max 200 MB
           </span>
         </button>
       )}
@@ -175,7 +182,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
       />
 
       {!pptxEnabled && (
-        <p className="inline-warning">
+        <p className={INLINE_WARNING}>
           LibreOffice not installed — PPTX input unavailable. PDF still works.
         </p>
       )}
@@ -183,13 +190,13 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
       <PresetBar service={SLIDES} settings={settings} onApply={applySettings} />
 
       {missingModels.length > 0 && (
-        <p className="inline-warning">
+        <p className={INLINE_WARNING}>
           ⚠ That preset asks for {missingModels.join(", ")}, which is not installed. The
           current selection was kept.
         </p>
       )}
 
-      <div className="fields">
+      <div className="flex flex-col gap-3">
         <label className="field">
           <span>OCR model</span>
           <select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}>
@@ -200,7 +207,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
             ))}
           </select>
           {vision.fallback && vision.options.length > 0 && (
-            <span className="inline-warning">
+            <span className={INLINE_WARNING}>
               ⚠ No installed model is marked <code>vision</code> in config/models.toml. Showing
               all models — pick one that actually supports images.
             </span>
@@ -216,7 +223,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
               </option>
             ))}
           </select>
-          {selectedAction && <span className="secondary">{selectedAction.description}</span>}
+          {selectedAction && <span className={MUTED}>{selectedAction.description}</span>}
         </label>
 
         {refining && (
@@ -230,7 +237,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
               ))}
             </select>
             {refine.fallback && refine.options.length > 0 && (
-              <span className="inline-warning">
+              <span className={INLINE_WARNING}>
                 ⚠ No installed model is marked <code>refine</code> in config/models.toml. Showing
                 all models.
               </span>
@@ -277,12 +284,12 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
         </label>
       </div>
 
-      {error && <p className="inline-error">{error}</p>}
+      {error && <p className={INLINE_ERROR}>{error}</p>}
 
-      <div className="row">
+      <div className={ROW}>
         <button
           type="submit"
-          className="primary"
+          className={PRIMARY}
           disabled={!file || ollamaDown || submitting || !ocrModel}
         >
           {submitting ? "Submitting…" : "Start processing"}

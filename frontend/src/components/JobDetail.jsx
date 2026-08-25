@@ -2,10 +2,20 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, CURRICULUM, SERVICE_LABEL, deleteJob, getJob, retryJob } from "../api.js";
 import { clockTime, duration, relativeTime } from "../format.js";
+import { MUTED, QUIET, SECONDARY_BUTTON } from "../styles.js";
+import { useDocumentTitle } from "../useDocumentTitle.js";
 import { usePolling } from "../usePolling.js";
 import Outline from "./Outline.jsx";
 import Output from "./Output.jsx";
-import Stages, { STATUS_GLYPH, STATUS_LABEL, isTerminal, statusLine } from "./Stages.jsx";
+import Stages, {
+  STATUS_COLOUR,
+  STATUS_GLYPH,
+  STATUS_LABEL,
+  isTerminal,
+  jobLabel,
+  statusLine,
+  tabTitle,
+} from "./Stages.jsx";
 
 // Retry means different things per pipeline, and the copy must not lie about it.
 function retryCopy(job) {
@@ -31,6 +41,8 @@ export default function JobDetail({ id, service, onDeleted }) {
   const polling = usePolling(fetcher, pollInterval, true);
   const job = polling.data;
 
+  useDocumentTitle(job ? tabTitle(job) : null);
+
   const status = job?.status;
   useEffect(() => {
     setPollInterval(isTerminal(status) ? 0 : 1500);
@@ -40,12 +52,14 @@ export default function JobDetail({ id, service, onDeleted }) {
 
   if (!job) {
     return (
-      <p className="empty">{polling.error ? String(polling.error.detail) : "Loading job…"}</p>
+      <p className="text-sm text-muted">
+        {polling.error ? String(polling.error.detail) : "Loading job…"}
+      </p>
     );
   }
 
   const terminal = isTerminal(job.status);
-  const label = job.params.filename || job.params.source_name || job.id;
+  const label = jobLabel(job);
   const ran = duration(job.started_at, job.finished_at);
 
   async function act(kind) {
@@ -77,27 +91,27 @@ export default function JobDetail({ id, service, onDeleted }) {
   }
 
   return (
-    <article className="detail">
-      <header className="detail-head">
-        <h2 className="detail-title">{label}</h2>
-        <p className={`detail-status status-${job.status}`}>
-          <span className="secondary">{SERVICE_LABEL[job.service]} · </span>
-          <span className="glyph">{STATUS_GLYPH[job.status]}</span> {STATUS_LABEL[job.status]}
-          {job.status === "processing" && <span className="secondary"> · {statusLine(job)}</span>}
+    <article className="flex flex-col">
+      <header className="grid gap-1">
+        <h2 className="text-xl font-semibold tracking-tight [overflow-wrap:anywhere]">{label}</h2>
+        <p className={`text-sm ${STATUS_COLOUR[job.status]}`}>
+          <span className={MUTED}>{SERVICE_LABEL[job.service]} · </span>
+          <span>{STATUS_GLYPH[job.status]}</span> {STATUS_LABEL[job.status]}
+          {job.status === "processing" && <span className={MUTED}> · {statusLine(job)}</span>}
         </p>
-        <div className="detail-meta">
-          <span className="mono job-id">{job.id}</span>
+        <div className="flex flex-wrap gap-3.5 text-xs text-muted mt-0.5">
+          <span className="text-xs font-mono">{job.id}</span>
           <span>Created {clockTime(job.created_at)}</span>
           {job.started_at && <span>Started {clockTime(job.started_at)}</span>}
           {job.finished_at && <span>Finished {clockTime(job.finished_at)}</span>}
           {ran && <span>Took {ran}</span>}
         </div>
         {polling.stale && (
-          <p className="stale">
+          <p className="text-xs text-warn">
             Last updated {relativeTime(polling.lastUpdated)} · connection unavailable
           </p>
         )}
-        {polling.reconnected && <p className="reconnected">Connected</p>}
+        {polling.reconnected && <p className="text-xs text-ok">Connected</p>}
       </header>
 
       <section className="panel-section">
@@ -106,34 +120,37 @@ export default function JobDetail({ id, service, onDeleted }) {
 
       {job.error && (
         <section className="panel-section">
-          <h3 className="section-heading">Error</h3>
-          <pre className="error-box">{job.error}</pre>
+          <h3 className="text-sm font-semibold">Error</h3>
+          <pre className="border border-fail border-l-[3px] rounded-md px-3 py-2.5 text-fail
+            bg-fail/[7%] font-mono text-xs leading-relaxed whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {job.error}
+          </pre>
         </section>
       )}
 
       {terminal && (
-        <section className="panel-section actions">
-          <div className="row">
+        <section className="panel-section">
+          <div className="flex items-center gap-2.5 flex-wrap mb-0.5">
             {job.status === "failed" && (
               <button
                 type="button"
-                className="secondary-button"
+                className={SECONDARY_BUTTON}
                 disabled={busy}
                 onClick={() => act("retry")}
               >
                 Retry job
               </button>
             )}
-            <button type="button" className="quiet" disabled={busy} onClick={() => act("delete")}>
+            <button type="button" className={QUIET} disabled={busy} onClick={() => act("delete")}>
               Delete
             </button>
           </div>
-          {job.status === "failed" && <p className="secondary">{retryCopy(job)}</p>}
-          {note && <p className="inline-note">{note}</p>}
+          {job.status === "failed" && <p className={MUTED}>{retryCopy(job)}</p>}
+          {note && <p className={MUTED}>{note}</p>}
         </section>
       )}
 
-      {!terminal && note && <p className="inline-note">{note}</p>}
+      {!terminal && note && <p className={MUTED}>{note}</p>}
 
       <Outline job={job} />
       <Output job={job} />

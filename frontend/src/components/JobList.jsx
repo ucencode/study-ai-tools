@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 
 import { SERVICE_LABEL, listJobs } from "../api.js";
 import { relativeTime } from "../format.js";
+import { QUIET } from "../styles.js";
+import { BASE_TITLE, useDocumentTitle } from "../useDocumentTitle.js";
 import { usePolling } from "../usePolling.js";
-import { STATUS_GLYPH, statusLine } from "./Stages.jsx";
+import { STATUS_COLOUR, STATUS_GLYPH, jobLabel, statusLine } from "./Stages.jsx";
 
 const GROUPS = [
   { key: "processing", heading: "Processing", match: (job) => job.status === "processing" },
@@ -15,7 +17,7 @@ const GROUPS = [
   },
 ];
 
-const labelOf = (job) => job.params.filename || job.params.source_name || job.id;
+const RAIL_HEADING = "text-xs font-semibold uppercase tracking-wider text-muted";
 
 export default function JobList({ activeJobId, onSelect, refreshToken }) {
   // Only meaningful in the narrow layout, where the rail sits below the workspace.
@@ -32,62 +34,90 @@ export default function JobList({ activeJobId, onSelect, refreshToken }) {
   const running = jobs.filter((job) => job.status === "processing").length;
   const waiting = jobs.filter((job) => job.status === "queued").length;
 
+  // Only when no job is open — JobDetail owns the title then, and two writers would race.
+  // Work continues after the tab is left, so a background tab should still show it.
+  useDocumentTitle(
+    activeJobId
+      ? null
+      : running > 0
+        ? `● ${running} running · ${BASE_TITLE}`
+        : waiting > 0
+          ? `○ ${waiting} waiting · ${BASE_TITLE}`
+          : BASE_TITLE,
+  );
+
   return (
-    <section className={`jobs${open ? "" : " collapsed"}`} aria-label="Jobs">
-      <div className="jobs-head">
-        <h2 className="rail-heading">Jobs</h2>
+    // `data-open` only bites in the narrow layout, where the rail can be collapsed.
+    <section
+      data-open={open}
+      className="group border-l border-line px-3 pt-3.5 pb-7 overflow-y-auto min-h-0
+                 max-rail:overflow-y-visible max-rail:border-l-0 max-rail:border-t"
+      aria-label="Jobs"
+    >
+      <div className="px-1 mb-2.5 max-rail:flex max-rail:items-baseline max-rail:gap-2.5">
+        <h2 className={`${RAIL_HEADING} mb-0.5`}>Jobs</h2>
         <button
           type="button"
-          className="quiet rail-toggle"
+          className={`${QUIET} hidden max-rail:inline-block max-rail:ml-auto`}
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
           {open ? "Hide" : "Show"}
         </button>
         {/* One worker: at most one job runs, so "active" would imply parallelism. */}
-        <p className="counts">
+        <p className="text-xs text-muted">
           {running} running · {waiting} waiting
         </p>
         {stale && (
-          <p className="stale">
+          <p className="text-xs text-warn">
             Last updated {relativeTime(lastUpdated)} · connection unavailable
           </p>
         )}
-        {reconnected && <p className="reconnected">Connected</p>}
+        {reconnected && <p className="text-xs text-ok">Connected</p>}
       </div>
 
       {jobs.length === 0 && !stale && (
-        <p className="empty">No jobs yet — submitted jobs appear here.</p>
+        <p className="text-sm text-muted max-rail:group-data-[open=false]:hidden">
+          No jobs yet — submitted jobs appear here.
+        </p>
       )}
 
-      {GROUPS.map(({ key, heading, match }) => {
-        const group = jobs.filter(match);
-        if (group.length === 0) return null;
-        return (
-          <div key={key} className="job-group">
-            <h3 className="group-heading">{heading}</h3>
-            <ul>
-              {group.map((job) => (
-                <li key={job.id}>
-                  <button
-                    type="button"
-                    className={`job-row${job.id === activeJobId ? " selected" : ""}`}
-                    aria-current={job.id === activeJobId ? "true" : undefined}
-                    onClick={() => onSelect(job)}
-                  >
-                    <span className="job-service">{SERVICE_LABEL[job.service]}</span>
-                    <span className="job-label">{labelOf(job)}</span>
-                    <span className={`job-status status-${job.status}`}>
-                      <span className="glyph">{STATUS_GLYPH[job.status]}</span> {statusLine(job)}
-                    </span>
-                    <span className="job-time">{relativeTime(job.created_at)}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        );
-      })}
+      <div className="space-y-3.5 max-rail:group-data-[open=false]:hidden">
+        {GROUPS.map(({ key, heading, match }) => {
+          const group = jobs.filter(match);
+          if (group.length === 0) return null;
+          return (
+            <div key={key}>
+              <h3 className={`${RAIL_HEADING} px-2 pb-1`}>{heading}</h3>
+              <ul>
+                {group.map((job) => (
+                  <li key={job.id}>
+                    <button
+                      type="button"
+                      className={`grid gap-0.5 w-full text-left p-2 rounded-md border-0 text-inherit ${
+                        job.id === activeJobId
+                          ? "bg-panel shadow-[inset_2px_0_0_var(--accent)]"
+                          : "bg-transparent hover:bg-panel"
+                      }`}
+                      aria-current={job.id === activeJobId ? "true" : undefined}
+                      onClick={() => onSelect(job)}
+                    >
+                      <span className="text-xs uppercase tracking-wide text-muted">
+                        {SERVICE_LABEL[job.service]}
+                      </span>
+                      <span className="text-sm [overflow-wrap:anywhere]">{jobLabel(job)}</span>
+                      <span className={`text-xs ${STATUS_COLOUR[job.status]}`}>
+                        <span>{STATUS_GLYPH[job.status]}</span> {statusLine(job)}
+                      </span>
+                      <span className="text-xs text-muted">{relativeTime(job.created_at)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

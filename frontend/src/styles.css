@@ -1,57 +1,53 @@
 @import "tailwindcss";
 
 /* A local processing workstation: neutral surfaces, thin borders, one accent.
-   Every colour is a token here so the dark block below only has to redefine
-   values, never rules. Components never name a colour and never use `dark:` —
-   they use the utilities the @theme block below builds out of these vars. */
+
+   Each token carries both values at once, so a colour is changed in exactly one
+   place and the light/dark pair is read side by side. `light-dark()` picks by the
+   computed `color-scheme`, which means the default below follows the OS with no
+   media query and no flash before JS runs — and the toggle only has to set
+   `color-scheme` on one element to flip everything.
+
+   Components never name a colour and never use `dark:`; they use the utilities
+   the @theme block builds out of these vars. */
 
 :root {
-  --bg: #f7f7f5;
-  --panel: #ffffff;
-  --border: #dededb;
-  --text: #20201e;
-  --secondary: #6f6f69;
+  /* Both, in this order: the OS preference decides until data-theme overrides it. */
+  color-scheme: light dark;
 
-  --accent: #4c56b8;
-  --accent-weak: #eceefa;
+  --bg: light-dark(#f7f7f5, #17181a);
+  --panel: light-dark(#ffffff, #1d1e21);
+  --border: light-dark(#dededb, #2e3035);
+  --text: light-dark(#20201e, #e7e7e3);
+  --secondary: light-dark(#6f6f69, #9a9a93);
 
-  --waiting: #6f6f69;
-  --processing: #2c6bd4;
-  --ok: #2f7d4f;
-  --fail: #c0392b;
-  --warn: #8a6410;
-  --warn-bg: #fdf6e6;
-  --warn-border: #e6d4a6;
+  --accent: light-dark(#4c56b8, #808ae8);
+  --accent-weak: light-dark(#eceefa, #23253a);
+
+  --waiting: light-dark(#6f6f69, #9a9a93);
+  --processing: light-dark(#2c6bd4, #6f9ef0);
+  --ok: light-dark(#2f7d4f, #57ae7c);
+  --fail: light-dark(#c0392b, #e0736a);
+  --warn: light-dark(#8a6410, #d8ab5e);
+  --warn-bg: light-dark(#fdf6e6, #272014);
+  --warn-border: light-dark(#e6d4a6, #4a3d23);
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* The explicit choice. useTheme.js sets data-theme, or removes it for "Auto",
+   which hands the decision back to `color-scheme: light dark` above. */
+:root[data-theme="light"] {
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17181a;
-    --panel: #1d1e21;
-    --border: #2e3035;
-    --text: #e7e7e3;
-    --secondary: #9a9a93;
-
-    --accent: #808ae8;
-    --accent-weak: #23253a;
-
-    --waiting: #9a9a93;
-    --processing: #6f9ef0;
-    --ok: #57ae7c;
-    --fail: #e0736a;
-    --warn: #d8ab5e;
-    --warn-bg: #272014;
-    --warn-border: #4a3d23;
-    color-scheme: dark;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 /* `inline` is load-bearing: it makes `bg-panel` emit `var(--panel)` rather than
-   baking today's value in, which is the only reason the dark block above still
-   works without a single `dark:` variant in any component. */
+   baking today's value in, which is the only reason the tokens above can resolve
+   per theme without a single `dark:` variant in any component. */
 @theme inline {
   --color-canvas: var(--bg);
   --color-panel: var(--panel);

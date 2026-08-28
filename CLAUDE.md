@@ -128,6 +128,10 @@ rather than generated. Adding a seventh is a decision, not a detail.
 | **Exactly one component owns the tab title**: JobDetail while a job is open, the jobs rail otherwise. The rail passes `null` when a job is open. | Two writers would race on every poll. The title carries progress because jobs outlive the tab, so a background tab is often the only view of them. |
 | **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
 | **Applying a preset only fills the form.** The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
+| **A batch is N independent jobs sharing one config**, uploaded one at a time. | A job directory holds one `input.pdf`, and sequential posts are what keep the FIFO order the queue promises. |
+| **Submitting opens the job only when a single deck was sent and it succeeded.** A batch stays on the form. | Per-file failures are rendered only on the form, so navigating away would hide them. |
+| **The toast owns upload progress** (`Uploading 2/5 files…`); the submit button only says `Submitting…`. | Two places counting the same thing drift. It counts files, never time — the no-ETA rule below still holds. |
+| **`createdIds` flashes new rail rows once, then clears after 2s.** | A row remounts when its job changes group, and a highlight that never expired would replay on every move. |
 | **No estimated time remaining, anywhere.** | OCR pages and chapter lengths vary wildly. A fabricated ETA is worse than none. |
 | **Failures render the raw exception string verbatim**, in a `<pre>`. | `error` is `f"{type(e).__name__}: {e}"`, not prose. Prettifying it in the UI would be inventing detail; friendlier errors are a backend change. |
 

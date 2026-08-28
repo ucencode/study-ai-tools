@@ -84,7 +84,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         questions: withQuiz ? questions : [],
         answers: withQuiz ? answers : [],
       });
-      onSubmitted(job);
+      onSubmitted([job], true);
     } catch (e) {
       setError(e.detail || String(e));
       setStep(withQuiz ? "calibration" : "source");

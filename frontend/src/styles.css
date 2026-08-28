@@ -71,6 +71,25 @@
   --breakpoint-rail: 900px;
 }
 
+/* A row the rail has just gained. Colour only — it uses the accent token, so it is
+   right in both themes, and there is no motion to suppress. The row's own
+   `bg-transparent` / `bg-panel` takes back over the moment it ends. */
+@theme {
+  --animate-flash: flash 1200ms ease-out 1;
+
+  @keyframes flash {
+    0% {
+      background-color: transparent;
+    }
+    30% {
+      background-color: var(--accent-weak);
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+}
+
 @layer base {
   html,
   body,

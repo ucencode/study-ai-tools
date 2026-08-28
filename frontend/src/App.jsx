@@ -15,6 +15,9 @@ export default function App() {
   // The service travels with the id: every job URL needs it.
   const [activeJob, setActiveJob] = useState(null);
   const [refreshToken, setRefreshToken] = useState(0);
+  // Ids the rail flashes once. Cleared straight after, because a row remounts when its
+  // job changes group, and a highlight that never expired would replay on every move.
+  const [created, setCreated] = useState([]);
   const [config, setConfig] = useState(null);
   const [models, setModels] = useState(null);
   // One state for both would let whichever request finishes second clear the other
@@ -54,8 +57,12 @@ export default function App() {
     setActiveTab(job.service);
   }
 
-  function submitted(job) {
-    openJob(job);
+  // `open` is the submitter's call, not a count: one deck that succeeded should land on
+  // its job, but a batch — or a batch that partly failed — has to leave the form up,
+  // because the per-file errors are only rendered there.
+  function submitted(jobs, open) {
+    setCreated(jobs.map((job) => job.id));
+    if (open && jobs.length > 0) openJob(jobs[0]);
     setRefreshToken((n) => n + 1);
   }
 
@@ -63,6 +70,14 @@ export default function App() {
     setActiveJob((current) => (current?.id === id ? null : current));
     setRefreshToken((n) => n + 1);
   }
+
+  useEffect(() => {
+    if (created.length === 0) return undefined;
+    // Long enough to cover the rail's immediate refetch plus the animation, short
+    // enough that no job has changed status yet.
+    const timer = setTimeout(() => setCreated([]), 2000);
+    return () => clearTimeout(timer);
+  }, [created]);
 
   function selectPipeline(service) {
     setActiveTab(service);
@@ -109,6 +124,7 @@ export default function App() {
           activeJobId={activeJob?.id}
           onSelect={openJob}
           refreshToken={refreshToken}
+          createdIds={created}
         />
       </div>
     </div>

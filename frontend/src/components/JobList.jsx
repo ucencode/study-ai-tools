@@ -19,7 +19,7 @@ const GROUPS = [
 
 const RAIL_HEADING = "text-xs font-semibold uppercase tracking-wider text-muted";
 
-export default function JobList({ activeJobId, onSelect, refreshToken }) {
+export default function JobList({ activeJobId, onSelect, refreshToken, createdIds = [] }) {
   // Only meaningful in the narrow layout, where the rail sits below the workspace.
   const [open, setOpen] = useState(true);
   // The rail keeps polling for the life of the app: jobs also arrive from the CLI.
@@ -98,7 +98,7 @@ export default function JobList({ activeJobId, onSelect, refreshToken }) {
                         job.id === activeJobId
                           ? "bg-panel shadow-[inset_2px_0_0_var(--accent)]"
                           : "bg-transparent hover:bg-panel"
-                      }`}
+                      } ${createdIds.includes(job.id) ? "animate-flash" : ""}`}
                       aria-current={job.id === activeJobId ? "true" : undefined}
                       onClick={() => onSelect(job)}
                     >

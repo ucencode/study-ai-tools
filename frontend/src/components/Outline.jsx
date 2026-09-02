@@ -42,7 +42,13 @@ export default function Outline({ job }) {
                     <summary className="cursor-pointer">
                       Established terms ({chapter.established.length})
                     </summary>
-                    <p className="mt-1">{chapter.established.join(" · ")}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {chapter.established.map((term) => (
+                        <span key={term} className={CHIP}>
+                          {term}
+                        </span>
+                      ))}
+                    </div>
                   </details>
                 )}
               </div>

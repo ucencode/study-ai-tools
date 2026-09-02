@@ -3,9 +3,21 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { getOutput } from "../api.js";
 import { clockTime } from "../format.js";
 import { usePolling } from "../usePolling.js";
-import { MUTED, QUIET } from "../styles.js";
+import { MUTED, QUIET, SECONDARY_BUTTON } from "../styles.js";
+import { jobLabel } from "./Stages.jsx";
 
 const PINNED_SLACK = 40; // px from the bottom that still counts as "at the bottom"
+
+// The name the job is known by everywhere else, minus whatever extension the source
+// arrived with, plus the one the file on disk actually has. Separators are stripped
+// because a download name is a filename, never a path.
+function downloadName(job) {
+  const base = jobLabel(job)
+    .replace(/\.[^.\\/]+$/, "")
+    .replace(/[\\/]/g, "-")
+    .trim();
+  return `${base || job.id}.md`;
+}
 
 export default function Output({ job }) {
   const running = job.status === "processing" || job.status === "queued";
@@ -36,6 +48,17 @@ export default function Output({ job }) {
     else el.scrollTop = scrollTop.current;
   }, [content, running]);
 
+  // The whole document is already in memory — it is what the <pre> below renders —
+  // so saving it needs no endpoint of its own.
+  function download() {
+    const url = URL.createObjectURL(new Blob([content], { type: "text/markdown" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = downloadName(job);
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function copy() {
     try {
       await navigator.clipboard.writeText(content);
@@ -48,12 +71,17 @@ export default function Output({ job }) {
 
   return (
     <section className="panel-section">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-center justify-between gap-3">
         <h3 className="text-sm font-semibold">Job output</h3>
         {content && (
-          <button type="button" className={QUIET} onClick={copy}>
-            {copied ? "Copied" : "Copy"}
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="button" className={QUIET} onClick={copy}>
+              {copied ? "Copied" : "Copy"}
+            </button>
+            <button type="button" className={SECONDARY_BUTTON} onClick={download}>
+              Download
+            </button>
+          </div>
         )}
       </div>
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { ApiError, CURRICULUM, SERVICE_LABEL, deleteJob, getJob, retryJob } from "../api.js";
 import { clockTime, duration, relativeTime } from "../format.js";
-import { MUTED, QUIET, SECONDARY_BUTTON } from "../styles.js";
+import { MUTED, SECONDARY_BUTTON } from "../styles.js";
 import { useDocumentTitle } from "../useDocumentTitle.js";
 import { usePolling } from "../usePolling.js";
 import Outline from "./Outline.jsx";
@@ -16,6 +16,13 @@ import Stages, {
   statusLine,
   tabTitle,
 } from "./Stages.jsx";
+
+// Deleting a job destroys its output for good, so it reads as destructive rather than
+// as the quiet link it sat next to. Inline, not in styles.js: this is the only place a
+// button is destructive, and three shared button levels is the budget there.
+const DESTRUCTIVE =
+  "h-9 px-3.5 rounded-md text-sm font-medium bg-transparent border border-line text-fail " +
+  "not-disabled:hover:border-fail not-disabled:hover:bg-fail/[7%]";
 
 // Retry means different things per pipeline, and the copy must not lie about it.
 function retryCopy(job) {
@@ -141,8 +148,13 @@ export default function JobDetail({ id, service, onDeleted }) {
                 Retry job
               </button>
             )}
-            <button type="button" className={QUIET} disabled={busy} onClick={() => act("delete")}>
-              Delete
+            <button
+              type="button"
+              className={DESTRUCTIVE}
+              disabled={busy}
+              onClick={() => act("delete")}
+            >
+              Delete job
             </button>
           </div>
           {job.status === "failed" && <p className={MUTED}>{retryCopy(job)}</p>}

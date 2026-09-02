@@ -29,7 +29,9 @@ class QuizRequest(BaseModel):
 class JobRequest(BaseModel):
     curriculum: str = Field(min_length=1)
     model: str = Field(min_length=1)
-    source_name: str = "curriculum.txt"
+    # Empty is meaningful: the reader named nothing, so views fall back to the course
+    # name the metadata stage reads out of the curriculum.
+    source_name: str = ""
     lang: str = "auto"
     mode: GenerationMode = "short"
     include_plan: bool = True

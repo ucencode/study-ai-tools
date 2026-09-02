@@ -8,6 +8,10 @@ import Quiz from "./Quiz.jsx";
 
 const FORM = "flex flex-col gap-3.5 max-w-[780px]";
 
+// Left empty on purpose: `source_name` is what the reader asked this job to be called,
+// and an empty one lets `jobLabel` fall back to the course the metadata stage extracts.
+const TITLE_PLACEHOLDER = "Named from the curriculum";
+
 const STEPS = [
   { id: "source", label: "Source" },
   { id: "calibration", label: "Calibration" },
@@ -16,7 +20,7 @@ const STEPS = [
 
 export default function CurriculumForm({ config, models, ollamaDown, configError, onRetryMeta, onSubmitted }) {
   const [curriculum, setCurriculum] = useState("");
-  const [sourceName, setSourceName] = useState("curriculum.txt");
+  const [title, setTitle] = useState("");
   const [model, setModel] = useState("");
   const [mode, setMode] = useState("short");
   const [lang, setLang] = useState("auto");
@@ -77,7 +81,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
       const job = await createCurriculumJob({
         curriculum,
         model,
-        source_name: sourceName,
+        source_name: title.trim(),
         lang,
         mode,
         include_plan: includePlan,
@@ -99,7 +103,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
     event.preventDefault();
     file.text().then((text) => {
       setCurriculum(text);
-      setSourceName(file.name);
+      setTitle(file.name.replace(/\.[^.]+$/, ""));
     });
   }
 
@@ -139,6 +143,20 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         ))}
       </ol>
 
+      <label className="field">
+        <span>Title</span>
+        <input
+          type="text"
+          value={title}
+          placeholder={TITLE_PLACEHOLDER}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <span className={MUTED}>
+          What every view calls this job. Dropping a file fills it in; leaving it empty takes
+          the course name from the curriculum itself.
+        </span>
+      </label>
+
       <label className="field field-wide">
         <span>Curriculum</span>
         <textarea
@@ -150,7 +168,6 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
           onDragOver={(event) => event.preventDefault()}
           onDrop={readDroppedFile}
         />
-        <span className={MUTED}>Source name · {sourceName}</span>
       </label>
 
       <PresetBar service={CURRICULUM} settings={settings} onApply={applySettings} />

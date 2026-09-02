@@ -102,9 +102,11 @@ export function stageStates(job) {
   }));
 }
 
-// Every view names a job the same way: whatever the user actually supplied.
+// Every view names a job the same way: whatever the user actually supplied, and when
+// they supplied nothing, the course the metadata stage read out of the curriculum. That
+// stage is the first model call of a run, so an untitled job renames itself early.
 export const jobLabel = (job) =>
-  job.params.filename || job.params.source_name || job.id;
+  job.params.filename || job.params.source_name || job.result?.course || job.id;
 
 // A browser tab truncates hard, and this app is built to be left running in the
 // background, so the glyph and the fraction come before the name — those are what

@@ -10,7 +10,7 @@ const FORM = "flex flex-col gap-3.5 max-w-[780px]";
 
 // Left empty on purpose: `source_name` is what the reader asked this job to be called,
 // and an empty one lets `jobLabel` fall back to the course the metadata stage extracts.
-const TITLE_PLACEHOLDER = "Named from the curriculum";
+const TITLE_PLACEHOLDER = "Title (optional)";
 
 const STEPS = [
   { id: "source", label: "Source" },
@@ -143,7 +143,7 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         ))}
       </ol>
 
-      <label className="field">
+      <label className="field field-wide">
         <span>Title</span>
         <input
           type="text"
@@ -151,10 +151,6 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
           placeholder={TITLE_PLACEHOLDER}
           onChange={(event) => setTitle(event.target.value)}
         />
-        <span className={MUTED}>
-          What every view calls this job. Dropping a file fills it in; leaving it empty takes
-          the course name from the curriculum itself.
-        </span>
       </label>
 
       <label className="field field-wide">
@@ -230,10 +226,6 @@ export default function CurriculumForm({ config, models, ollamaDown, configError
         />
         <span>
           Include the study plan in the document
-          <span className="block mt-0.5 text-xs text-muted">
-            The study plan is generated either way. This controls only whether it appears in
-            the final document.
-          </span>
         </span>
       </label>
 

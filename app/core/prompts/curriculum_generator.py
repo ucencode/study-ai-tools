@@ -132,6 +132,12 @@ Return ONLY a valid JSON array. No explanation, no markdown fences, no nesting.
   }
 ]
 
+Rules for "topic" and "scope" — plain prose only:
+- No LaTeX, no math delimiters, no backslashes of any kind. Write "E[Y given X]", never "\\(E[Y\\mid X]\\)".
+- No markdown, no code fences, no HTML. A chapter name is a name, not a formula.
+- Plain ASCII punctuation: a normal hyphen "-", a normal apostrophe "'". No non-breaking hyphens.
+- Anything that needs notation belongs in the chapter itself, not in this outline.
+
 Rules for "depends_on" — this is the important field, get it right:
 - List ONLY topics that appear EARLIER in this same array. Never a later one, never itself.
 - List a topic only when this chapter genuinely cannot be understood without it — the earlier

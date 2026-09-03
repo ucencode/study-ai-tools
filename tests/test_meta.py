@@ -1,6 +1,10 @@
 """The endpoints the UI leans on before it can submit anything."""
 
+import json
+
 from conftest import wait_for
+
+from app.core import llm
 
 
 def test_health_reports_ollama_up(client, fake_llm):
@@ -85,3 +89,19 @@ def test_an_unknown_service_is_404_not_an_empty_list(client, fake_llm):
 def test_a_missing_job_is_404(client, fake_llm):
     assert client.get("/api/slide-summarizer/jobs/nope").status_code == 404
     assert client.get("/api/curriculum-generator/jobs/nope/output").status_code == 404
+
+
+def test_sanitize_json_repairs_latex_escapes():
+    """gpt-oss writes \\(x\\) inside scope strings; json.loads rejects the escape."""
+    raw = r'[{"topic": "Conditional expectation", "scope": "Treat \(E[Y\\mid X]\) as a function."}]'
+
+    entry = json.loads(llm.sanitize_json(raw))[0]
+
+    assert entry["topic"] == "Conditional expectation"
+    assert "E[Y" in entry["scope"]
+
+
+def test_sanitize_json_leaves_valid_escapes_alone():
+    raw = r'{"a": "line\nbreak \"quoted\" path\/x é"}'
+
+    assert json.loads(llm.sanitize_json(raw))["a"] == 'line\nbreak "quoted" path/x é'

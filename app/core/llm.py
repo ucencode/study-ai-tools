@@ -137,6 +137,13 @@ def sanitize_json(raw: str) -> str:
     raw = re.sub(r"(?<![\"'\w])#[^\n]*", "", raw)
     # trailing commas before ] or }
     raw = re.sub(r",\s*([}\]])", r"\1", raw)
+    # backslashes that are not a valid JSON escape — models write LaTeX like \(x\) inside strings.
+    # A valid escape is consumed whole, so the second half of a legitimate \\ is never re-escaped.
+    raw = re.sub(
+        r'\\(["\\/bfnrt]|u[0-9a-fA-F]{4})?',
+        lambda m: m.group(0) if m.group(1) else r"\\",
+        raw,
+    )
     return raw.strip()
 
 

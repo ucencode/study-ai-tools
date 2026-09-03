@@ -11,6 +11,7 @@ from pathlib import Path
 
 from app.core import documents, llm
 from app.core.languages import AUDIENCE_INSTRUCTION, LANG_INSTRUCTION
+from app.core.markdown import normalize
 from app.core.prompts import slide_summarizer as prompts
 from app.models._job import now
 from app.models.slide_summarizer import (
@@ -252,5 +253,8 @@ class SlideSummarizerService:
                 out.write(chunk)
                 out.flush()
 
+        text = normalize("".join(chunks))
+        output_path.write_text(text, encoding="utf-8")
+
         self.repository.set_progress(job_id, "refine", 1, 1)
-        return "".join(chunks)
+        return text

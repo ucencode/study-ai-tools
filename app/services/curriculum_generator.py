@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.core import llm
 from app.core.languages import LANG_INSTRUCTION
+from app.core.markdown import normalize
 from app.core.prompts import curriculum_generator as prompts
 from app.models._job import now
 from app.models.curriculum_generator import (
@@ -466,7 +467,12 @@ class CurriculumGeneratorService:
                 chunks.append(chunk)
                 out.write(chunk)
                 out.flush()
-        return "".join(chunks)
+
+        # Delimiters can straddle a chunk boundary, so the swap happens once at the end.
+        # A poller sees the raw form until then; the saved file is always the fixed one.
+        text = normalize("".join(chunks))
+        path.write_text(text, encoding="utf-8")
+        return text
 
 
 def dict_to_yaml(data: dict) -> str:

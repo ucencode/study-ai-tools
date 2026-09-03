@@ -167,6 +167,13 @@ Learner context:
 Output rules:
 - Format: Markdown only
 - Do NOT include YAML frontmatter
+- Math uses Obsidian delimiters: `$x$` inline, `$$` on its own line for a display block.
+  Never `\\(x\\)` and never `\\[x\\]` — those render as literal backslashes for the reader.
+- A dollar sign that means money must be escaped: `\\$4.50`. A bare `$` opens a math span and
+  swallows the prose up to the next one.
+- Mermaid diagrams: `flowchart TD` — top-down. Never `LR`, which runs off the side of the page.
+  Quote any node label containing brackets or parentheses: `A["Ingestion (Kafka)"]`, never
+  `A[Ingestion (Kafka)]` — unquoted, the diagram fails to parse and renders as nothing.
 - Write every topic using EXACTLY this template, in this order, with these exact headings:
 
 ---
@@ -263,6 +270,13 @@ Continuity rules:
 Output rules:
 - Format: Markdown only
 - Do NOT include YAML frontmatter
+- Math uses Obsidian delimiters: `$x$` inline, `$$` on its own line for a display block.
+  Never `\\(x\\)` and never `\\[x\\]` — those render as literal backslashes for the reader.
+- A dollar sign that means money must be escaped: `\\$4.50`. A bare `$` opens a math span and
+  swallows the prose up to the next one.
+- Mermaid diagrams: `flowchart TD` — top-down. Never `LR`, which runs off the side of the page.
+  Quote any node label containing brackets or parentheses: `A["Ingestion (Kafka)"]`, never
+  `A[Ingestion (Kafka)]` — unquoted, the diagram fails to parse and renders as nothing.
 - Write ONLY the one chapter you are asked for — never any other topic
 - Use EXACTLY this template, in this order, with these exact headings:
 

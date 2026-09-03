@@ -35,7 +35,7 @@ app/
   services/          the pipelines; the layer both the API and CLI call
     preset.py        saved settings — every preset rule lives here, not in a router
   routers/           HTTP only — validate, delegate, map exceptions to status codes
-  core/              llm, catalogue, languages, documents, paths, prompts/
+  core/              llm, catalogue, languages, documents, markdown, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
 frontend/            React + Vite + Tailwind UI — plain React, six dependencies, no API client
@@ -67,6 +67,7 @@ Break these and things quietly rot.
 | **The OCR cache keys on `source_sha256`, never `filename`.** | Two people uploading `lecture.pdf` are not uploading the same lecture. |
 | **`MATERIAL_TOPIC_STABLE` must be byte-identical across every chapter of a job.** | Ollama's prompt prefix cache only hits on an exact prefix match. Putting anything varying above it silently doubles the cost of full mode. |
 | **A preset stores settings, never the input.** Params is the settings model plus the source, so a new option is presettable by default. | A saved setup that carried a document would resubmit the wrong file. Applying one fills the form and is discarded — `job.json` never names a preset. |
+| **Every saved document goes through `markdown.normalize()`.** Prompts ask for Obsidian-ready output; the normalizer is what guarantees it. | A prompt is a request. `\(x\)`, an unescaped `$5`, and an unquoted mermaid label each render as garbage, and the run that produced them is already paid for. |
 | **`catalogue.for_role()` returns only explicitly classified models.** | An unknown model is an unknown capability. Offering a text-only model as an OCR choice is worse than offering nothing. |
 
 ### Schema migration

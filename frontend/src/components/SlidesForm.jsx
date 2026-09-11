@@ -5,6 +5,7 @@ import { fileSize, languageLabel } from "../format.js";
 import { INLINE_ERROR, INLINE_WARNING, MUTED, PRIMARY, QUIET, ROW, SECONDARY_BUTTON } from "../styles.js";
 import PresetBar from "./PresetBar.jsx";
 import Toast from "./Toast.jsx";
+import Wizard from "./Wizard.jsx";
 
 const MAX_BYTES = 200 * 1024 * 1024;
 
@@ -32,6 +33,11 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [missingModels, setMissingModels] = useState([]);
+  // Which step is live. Everything before it shows its answer, everything after it is a
+  // dimmed preview.
+  const [step, setStep] = useState(0);
+  // A preset has answered every step after the decks, whenever it was applied.
+  const [preset, setPreset] = useState(false);
   const picker = useRef(null);
 
   const vision = modelsForRole(models, "vision");
@@ -82,6 +88,17 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
     if (preset.level) setLevel(preset.level);
     setMissingModels(missing);
     setError(null);
+    setPreset(true);
+    // A preset answers every step but the decks, so there is nothing left to walk
+    // through: jump to the end, or wait on the one question it cannot answer — which
+    // `leaveSource` then continues straight to the end.
+    setStep(files.length > 0 ? steps.length - 1 : 0);
+  }
+
+  /** Leaving the decks step. Everything after it is a settings question, so a preset
+      that was applied first has already answered all of them. */
+  function leaveSource() {
+    setStep(preset ? steps.length - 1 : 1);
   }
 
   /** Why this file cannot be a job, or null. Checked at pick time so nothing that is
@@ -145,8 +162,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
     return form;
   }
 
-  async function submit(event) {
-    event.preventDefault();
+  async function submit() {
     if (files.length === 0) return;
 
     setSubmitting(true);
@@ -180,6 +196,9 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
     setFiles(failed);
     setSubmitting(false);
     if (failed.length > 0) {
+      // Back to the deck step: the per-file errors are rendered in that list and
+      // nowhere else, and a collapsed step would hide them.
+      setStep(0);
       setError(`${failed.length} of ${files.length} could not be submitted — see the list above.`);
     }
     setToast({
@@ -209,150 +228,142 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
 
   const selectedAction = config.actions.find((option) => option.value === action);
   const batch = files.length > 1;
+  const staged = files.reduce((total, entry) => total + entry.file.size, 0);
   // The toast owns the count while uploading; two places saying it would only drift.
   const label = submitting ? "Submitting…" : batch ? `Start ${files.length} jobs` : "Start processing";
 
-  return (
-    <form className={FORM} onSubmit={submit}>
-      <h2 className="text-base font-semibold">Slide summarizer</h2>
-      <p className={MUTED}>
-        OCR a slide deck page by page, then optionally refine it into a document. Add
-        several decks to queue one job each, all with the settings below.
-      </p>
-
-      {/* Dropping adds, whether the list is empty or not — so the handlers sit out here
-          rather than on the empty-state button. */}
-      <div
-        className="flex flex-col gap-2"
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(event) => {
-          event.preventDefault();
-          setDragging(false);
-          add(event.dataTransfer.files);
-        }}
-      >
-        {files.length === 0 ? (
-          <button
-            type="button"
-            className={`flex flex-col items-center gap-1 px-3.5 py-6.5 border-[1.5px] border-dashed
-                        rounded-md text-sm ${
-              dragging ? "border-accent bg-accent-weak" : "border-line bg-transparent hover:border-accent hover:bg-accent-weak"
-            }`}
-            onClick={() => picker.current?.click()}
+  const steps = [
+    {
+      id: "source",
+      title: "Slide decks",
+      hint: "One job per deck, all sharing the settings you pick below.",
+      complete: files.length > 0,
+      summary:
+        files.length === 1
+          ? `${files[0].file.name} · ${fileSize(files[0].file.size)}`
+          : `${files.length} decks · ${fileSize(staged)}`,
+      onContinue: leaveSource,
+      body: (
+        <>
+          {/* Dropping adds, whether the list is empty or not — so the handlers sit out
+              here rather than on the empty-state button. */}
+          <div
+            className="flex flex-col gap-2"
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              add(event.dataTransfer.files);
+            }}
           >
-            <span>Drop files here, or click to choose</span>
-            <span className={MUTED}>
-              PDF ·{" "}
-              <span className={pptxEnabled ? "" : "text-line line-through"}>PPTX</span> · max 200 MB
-              each
-            </span>
-          </button>
-        ) : (
-          <>
-            <ul className={`rounded-md border ${dragging ? "border-accent" : "border-line"}`}>
-              {files.map((entry, index) => (
-                <li
-                  key={entry.key}
-                  className="flex items-center gap-2 px-3 py-2 text-sm border-t border-line first:border-t-0"
-                >
-                  <span className={`${MUTED} font-mono`}>{String(index + 1).padStart(2, "0")}</span>
-                  <span className="font-medium [overflow-wrap:anywhere]">{entry.file.name}</span>
-                  <span className={MUTED}>· {fileSize(entry.file.size)}</span>
-                  {entry.status === "uploading" && (
-                    <span className="text-xs text-processing">uploading…</span>
-                  )}
-                  {entry.status === "failed" && (
-                    <span className="text-xs text-fail [overflow-wrap:anywhere]">
-                      ✗ {entry.error}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    className="ml-auto px-1 border-0 bg-transparent text-muted not-disabled:hover:text-fg"
-                    disabled={submitting}
-                    aria-label={`Remove ${entry.file.name}`}
-                    onClick={() => remove(entry.key)}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className={ROW}>
+            {files.length === 0 ? (
               <button
                 type="button"
-                className={QUIET}
-                disabled={submitting}
+                className={`flex flex-col items-center gap-1 px-3.5 py-6.5 border-[1.5px] border-dashed
+                            rounded-md text-sm ${
+                  dragging ? "border-accent bg-accent-weak" : "border-line bg-transparent hover:border-accent hover:bg-accent-weak"
+                }`}
                 onClick={() => picker.current?.click()}
               >
-                Add more files
+                <span>Drop files here, or click to choose</span>
+                <span className={MUTED}>
+                  PDF ·{" "}
+                  <span className={pptxEnabled ? "" : "text-line line-through"}>PPTX</span> · max
+                  200 MB each
+                </span>
               </button>
-              <button
-                type="button"
-                className={QUIET}
-                disabled={submitting}
-                onClick={() => {
-                  setFiles([]);
-                  setError(null);
-                }}
-              >
-                Clear all
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+            ) : (
+              <>
+                <ul className={`rounded-md border ${dragging ? "border-accent" : "border-line"}`}>
+                  {files.map((entry, index) => (
+                    <li
+                      key={entry.key}
+                      className="flex items-center gap-2 px-3 py-2 text-sm border-t border-line first:border-t-0"
+                    >
+                      <span className={`${MUTED} font-mono`}>
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <span className="font-medium [overflow-wrap:anywhere]">{entry.file.name}</span>
+                      <span className={MUTED}>· {fileSize(entry.file.size)}</span>
+                      {entry.status === "uploading" && (
+                        <span className="text-xs text-processing">uploading…</span>
+                      )}
+                      {entry.status === "failed" && (
+                        <span className="text-xs text-fail [overflow-wrap:anywhere]">
+                          ✗ {entry.error}
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="ml-auto px-1 border-0 bg-transparent text-muted not-disabled:hover:text-fg"
+                        disabled={submitting}
+                        aria-label={`Remove ${entry.file.name}`}
+                        onClick={() => remove(entry.key)}
+                      >
+                        ×
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className={ROW}>
+                  <button
+                    type="button"
+                    className={QUIET}
+                    disabled={submitting}
+                    onClick={() => picker.current?.click()}
+                  >
+                    Add more files
+                  </button>
+                  <button
+                    type="button"
+                    className={QUIET}
+                    disabled={submitting}
+                    onClick={() => {
+                      setFiles([]);
+                      setError(null);
+                    }}
+                  >
+                    Clear all
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
-      <input
-        ref={picker}
-        type="file"
-        accept={pptxEnabled ? ".pdf,.pptx" : ".pdf"}
-        multiple
-        hidden
-        onChange={(event) => {
-          add(event.target.files);
-          // Cleared so re-picking a file that was just removed still fires a change.
-          event.target.value = "";
-        }}
-      />
+          <input
+            ref={picker}
+            type="file"
+            accept={pptxEnabled ? ".pdf,.pptx" : ".pdf"}
+            multiple
+            hidden
+            onChange={(event) => {
+              add(event.target.files);
+              // Cleared so re-picking a file that was just removed still fires a change.
+              event.target.value = "";
+            }}
+          />
 
-      {!pptxEnabled && (
-        <p className={INLINE_WARNING}>
-          LibreOffice not installed — PPTX input unavailable. PDF still works.
-        </p>
-      )}
-
-      <PresetBar service={SLIDES} settings={settings} onApply={applySettings} />
-
-      {missingModels.length > 0 && (
-        <p className={INLINE_WARNING}>
-          ⚠ That preset asks for {missingModels.join(", ")}, which is not installed. The
-          current selection was kept.
-        </p>
-      )}
-
-      <div className="flex flex-col gap-3">
-        <label className="field">
-          <span>OCR model</span>
-          <select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}>
-            {vision.options.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          {vision.fallback && vision.options.length > 0 && (
-            <span className={INLINE_WARNING}>
-              ⚠ No installed model is marked <code>vision</code> in config/models.toml. Showing
-              all models — pick one that actually supports images.
-            </span>
+          {!pptxEnabled && (
+            <p className={INLINE_WARNING}>
+              LibreOffice not installed — PPTX input unavailable. PDF still works.
+            </p>
           )}
-        </label>
 
+          {error && <p className={INLINE_ERROR}>{error}</p>}
+        </>
+      ),
+    },
+    {
+      id: "action",
+      title: "What to produce",
+      hint: "OCR always runs; this decides what happens to the text afterwards.",
+      complete: Boolean(action),
+      summary: selectedAction?.label ?? action,
+      body: (
         <label className="field">
           <span>Action</span>
           <select value={action} onChange={(event) => setAction(event.target.value)}>
@@ -364,81 +375,139 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
           </select>
           {selectedAction && <span className={MUTED}>{selectedAction.description}</span>}
         </label>
-
-        {refining && (
+      ),
+    },
+    {
+      id: "models",
+      title: "Models",
+      hint: refining ? "One reads the pages, the other writes the document." : "Reads the pages.",
+      complete: Boolean(ocrModel) && (!refining || Boolean(refineModel)),
+      summary: refining ? `${ocrModel} → ${refineModel}` : ocrModel,
+      body: (
+        <>
           <label className="field">
-            <span>Refine model</span>
-            <select value={refineModel} onChange={(event) => setRefineModel(event.target.value)}>
-              {refine.options.map((name) => (
+            <span>OCR model</span>
+            <select value={ocrModel} onChange={(event) => setOcrModel(event.target.value)}>
+              {vision.options.map((name) => (
                 <option key={name} value={name}>
                   {name}
                 </option>
               ))}
             </select>
-            {refine.fallback && refine.options.length > 0 && (
+            {vision.fallback && vision.options.length > 0 && (
               <span className={INLINE_WARNING}>
-                ⚠ No installed model is marked <code>refine</code> in config/models.toml. Showing
-                all models.
+                ⚠ No installed model is marked <code>vision</code> in config/models.toml. Showing
+                all models — pick one that actually supports images.
               </span>
             )}
           </label>
-        )}
 
-        {refining && (
+          {refining && (
+            <label className="field">
+              <span>Refine model</span>
+              <select value={refineModel} onChange={(event) => setRefineModel(event.target.value)}>
+                {refine.options.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              {refine.fallback && refine.options.length > 0 && (
+                <span className={INLINE_WARNING}>
+                  ⚠ No installed model is marked <code>refine</code> in config/models.toml. Showing
+                  all models.
+                </span>
+              )}
+            </label>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "output",
+      title: "Output",
+      hint: refining ? "How the document should read, and how sharply pages are rendered." : "How sharply pages are rendered.",
+      complete: true,
+      summary: null,
+      body: (
+        <>
+          {refining && (
+            <label className="field">
+              <span>Language</span>
+              <select value={lang} onChange={(event) => setLang(event.target.value)}>
+                {config.languages.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {languageLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
+          {audienceApplies && (
+            <label className="field">
+              <span>Audience</span>
+              <select value={level} onChange={(event) => setLevel(event.target.value)}>
+                {config.audiences.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <label className="field">
-            <span>Language</span>
-            <select value={lang} onChange={(event) => setLang(event.target.value)}>
-              {config.languages.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {languageLabel(option)}
-                </option>
-              ))}
-            </select>
+            <span>DPI</span>
+            <input
+              type="number"
+              min="50"
+              max="600"
+              step="10"
+              value={dpi}
+              onChange={(event) => setDpi(event.target.value)}
+            />
           </label>
-        )}
+        </>
+      ),
+      action: (
+        <div className={ROW}>
+          <button
+            type="button"
+            className={PRIMARY}
+            disabled={files.length === 0 || ollamaDown || submitting || !ocrModel}
+            onClick={submit}
+          >
+            {label}
+          </button>
+          {batch && !submitting && (
+            <span className={MUTED}>One job each, run one at a time in this order.</span>
+          )}
+        </div>
+      ),
+    },
+  ];
 
-        {audienceApplies && (
-          <label className="field">
-            <span>Audience</span>
-            <select value={level} onChange={(event) => setLevel(event.target.value)}>
-              {config.audiences.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
+  return (
+    <div className={FORM}>
+      <h2 className="text-base font-semibold">Slide summarizer</h2>
+      <p className={MUTED}>
+        OCR a slide deck page by page, then optionally refine it into a document. Add
+        several decks to queue one job each, all with the settings below.
+      </p>
 
-        <label className="field">
-          <span>DPI</span>
-          <input
-            type="number"
-            min="50"
-            max="600"
-            step="10"
-            value={dpi}
-            onChange={(event) => setDpi(event.target.value)}
-          />
-        </label>
-      </div>
+      <PresetBar service={SLIDES} settings={settings} onApply={applySettings} />
 
-      {error && <p className={INLINE_ERROR}>{error}</p>}
+      {missingModels.length > 0 && (
+        <p className={INLINE_WARNING}>
+          ⚠ That preset asks for {missingModels.join(", ")}, which is not installed. The
+          current selection was kept.
+        </p>
+      )}
 
-      <div className={ROW}>
-        <button
-          type="submit"
-          className={PRIMARY}
-          disabled={files.length === 0 || ollamaDown || submitting || !ocrModel}
-        >
-          {label}
-        </button>
-        {batch && !submitting && (
-          <span className={MUTED}>One job each, run one at a time in this order.</span>
-        )}
-      </div>
+      <Wizard steps={steps} current={step} onCurrent={setStep} />
 
       {toast && <Toast text={toast.text} progress={toast.progress} tone={toast.tone} />}
-    </form>
+    </div>
   );
 }

@@ -46,7 +46,8 @@ frontend/            React + Vite + Tailwind UI — plain React, six dependencie
   src/useDocumentTitle.js  the tab title; exactly one owner at a time
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
-  src/components/    shell, the two forms, the preset bar, the jobs rail, job detail
+  src/components/    shell, the two forms, the step wizard, the preset bar, the jobs rail,
+                     job detail
 ```
 
 Dependency direction is one-way: `routers → services → repositories → models`, with `core`
@@ -128,7 +129,8 @@ rather than generated. Adding a seventh is a decision, not a detail.
 | **URLs are hyphenated (`/api/slide-summarizer`), the `service` field is not (`slide_summarizer`).** `api.js` owns the one mapping. | The merged job list returns records whose `service` cannot be dropped into a URL. |
 | **Exactly one component owns the tab title**: JobDetail while a job is open, the jobs rail otherwise. The rail passes `null` when a job is open. | Two writers would race on every poll. The title carries progress because jobs outlive the tab, so a background tab is often the only view of them. |
 | **The rail counts `1 running · N waiting`**, never a combined "active". | One worker means at most one job runs; "active" implies parallelism the backend does not have. |
-| **Applying a preset only fills the form.** The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
+| **A form is one decision per step.** Steps behind the current one collapse to the answer they hold, and the ones ahead stay on screen with their real controls, dimmed and `inert`. | One live control at a time, without hiding what the form is going to ask next. A preview built from separate mock markup would be a second thing to keep in step. |
+| **Applying a preset only fills the form**, then jumps to the last step — it answers every step but the input, so applying it first instead waits on the input and continues from there straight to the end. The submitted params are always the full explicit set the fields hold. | Otherwise `params` stops being the record of what was asked, and editing a field after applying would silently not count. |
 | **A batch is N independent jobs sharing one config**, uploaded one at a time. | A job directory holds one `input.pdf`, and sequential posts are what keep the FIFO order the queue promises. |
 | **Submitting opens the job only when a single deck was sent and it succeeded.** A batch stays on the form. | Per-file failures are rendered only on the form, so navigating away would hide them. |
 | **The toast owns upload progress** (`Uploading 2/5 files…`); the submit button only says `Submitting…`. | Two places counting the same thing drift. It counts files, never time — the no-ETA rule below still holds. |

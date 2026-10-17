@@ -11,17 +11,25 @@ const PINNED_SLACK = 40; // px from the bottom that still counts as "at the bott
 // The name the job is known by everywhere else, minus whatever extension the source
 // arrived with, plus the one the file on disk actually has. Separators are stripped
 // because a download name is a filename, never a path.
-function downloadName(job) {
+function downloadName(job, extension) {
   const base = jobLabel(job)
     .replace(/\.[^.\\/]+$/, "")
     .replace(/[\\/]/g, "-")
     .trim();
-  return `${base || job.id}.md`;
+  return `${base || job.id}${extension}`;
 }
 
-export default function Output({ job }) {
+// `fetch`, `extension` and `heading` let a slide job show its transcript and its summary
+// as two tabs of this one panel; every other job uses the defaults.
+export default function Output({
+  job,
+  fetch = getOutput,
+  extension = ".md",
+  heading = <h3 className="text-sm font-semibold">Job output</h3>,
+  empty,
+}) {
   const running = job.status === "processing" || job.status === "queued";
-  const fetcher = useCallback(() => getOutput(job.service, job.id), [job.service, job.id]);
+  const fetcher = useCallback(() => fetch(job.service, job.id), [fetch, job.service, job.id]);
 
   // A terminal job gets one final fetch and then no interval at all.
   const { data, stale, lastUpdated } = usePolling(fetcher, running ? 3000 : 0, true);
@@ -51,10 +59,11 @@ export default function Output({ job }) {
   // The whole document is already in memory — it is what the <pre> below renders —
   // so saving it needs no endpoint of its own.
   function download() {
-    const url = URL.createObjectURL(new Blob([content], { type: "text/markdown" }));
+    const type = extension === ".md" ? "text/markdown" : "text/plain";
+    const url = URL.createObjectURL(new Blob([content], { type }));
     const link = document.createElement("a");
     link.href = url;
-    link.download = downloadName(job);
+    link.download = downloadName(job, extension);
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -72,7 +81,7 @@ export default function Output({ job }) {
   return (
     <section className="panel-section">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold">Job output</h3>
+        {heading}
         {content && (
           <div className="flex items-center gap-3">
             <button type="button" className={QUIET} onClick={copy}>
@@ -105,7 +114,7 @@ export default function Output({ job }) {
         </div>
       ) : (
         <p className="text-sm text-muted">
-          {running ? "Nothing written yet." : "This job produced no output."}
+          {empty || (running ? "Nothing written yet." : "This job produced no output.")}
         </p>
       )}
     </section>

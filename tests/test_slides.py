@@ -34,6 +34,12 @@ def test_pdf_runs_through_ocr_and_refine(client, fake_llm, progress_log, pdf):
     ]
     assert job["progress"] is None  # cleared when the job ends
 
+    # Both documents are readable: the transcript on /raw, only the summary on /output.
+    raw = client.get(f"/api/{SERVICE}/jobs/{job['id']}/raw").json()["content"]
+    output = client.get(f"/api/{SERVICE}/jobs/{job['id']}/output").json()["content"]
+    assert "Page 1 transcript." in raw
+    assert "Refined text." in output and "transcript" not in output
+
 
 def test_skip_stops_after_the_raw_transcript(client, fake_llm, progress_log, pdf):
     job = wait_for(client, SERVICE, submit(client, pdf(pages=2)).json()["id"])

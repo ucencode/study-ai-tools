@@ -89,6 +89,7 @@ def test_an_unknown_service_is_404_not_an_empty_list(client, fake_llm):
 def test_a_missing_job_is_404(client, fake_llm):
     assert client.get("/api/slide-summarizer/jobs/nope").status_code == 404
     assert client.get("/api/curriculum-generator/jobs/nope/output").status_code == 404
+    assert client.get("/api/slide-summarizer/jobs/nope/raw").status_code == 404
 
 
 def test_sanitize_json_repairs_latex_escapes():

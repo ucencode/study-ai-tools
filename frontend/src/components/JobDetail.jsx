@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { ApiError, CURRICULUM, SERVICE_LABEL, deleteJob, getJob, retryJob } from "../api.js";
+import {
+  ApiError,
+  CURRICULUM,
+  SERVICE_LABEL,
+  SLIDES,
+  deleteJob,
+  getJob,
+  getRaw,
+  retryJob,
+} from "../api.js";
 import { clockTime, duration, relativeTime } from "../format.js";
 import { MUTED, SECONDARY_BUTTON } from "../styles.js";
 import { useDocumentTitle } from "../useDocumentTitle.js";
@@ -35,6 +44,55 @@ function retryCopy(job) {
     return "Resumes after the outline — metadata, plan and outline are kept.";
   }
   return "Resumes from the last finished stage — finished work is kept.";
+}
+
+// Summary and deep leave two documents behind — the OCR transcript and the result — and
+// both are worth reading, so they get a tab each. Only the visible tab is mounted, so
+// only one of them polls.
+function hasTranscriptTab(job) {
+  return job.service === SLIDES && ["summary", "deep"].includes(job.params?.action);
+}
+
+function SlideOutput({ job }) {
+  const ocrRunning = job.status !== "completed" && job.status !== "failed" &&
+    job.progress?.stage !== "refine";
+  // Picked once when the job is opened and never switched for the reader afterwards,
+  // so the view does not jump while someone is reading the transcript.
+  const [tab, setTab] = useState(() => (ocrRunning ? "ocr" : "result"));
+  const resultLabel = job.params.action === "deep" ? "Deep" : "Summary";
+
+  const tabs = (
+    <div role="tablist" className="flex gap-1">
+      {[["ocr", "OCR"], ["result", resultLabel]].map(([key, text]) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={tab === key}
+          onClick={() => setTab(key)}
+          className={
+            "px-2.5 py-1 rounded-md text-sm font-semibold border " +
+            (tab === key
+              ? "border-line bg-canvas text-fg"
+              : "border-transparent bg-transparent text-muted hover:text-fg")
+          }
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  );
+
+  return tab === "ocr" ? (
+    <Output key="ocr" job={job} fetch={getRaw} extension=".txt" heading={tabs} />
+  ) : (
+    <Output
+      key="result"
+      job={job}
+      heading={tabs}
+      empty={ocrRunning ? "Starts after OCR finishes." : undefined}
+    />
+  );
 }
 
 export default function JobDetail({ id, service, onDeleted }) {
@@ -165,7 +223,7 @@ export default function JobDetail({ id, service, onDeleted }) {
       {!terminal && note && <p className={MUTED}>{note}</p>}
 
       <Outline job={job} />
-      <Output job={job} />
+      {hasTranscriptTab(job) ? <SlideOutput job={job} /> : <Output job={job} />}
     </article>
   );
 }

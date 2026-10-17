@@ -111,6 +111,14 @@ async def get_output(job_id: str) -> dict:
         raise HTTPException(404, str(e)) from e
 
 
+@router.get("/jobs/{job_id}/raw")
+async def get_raw(job_id: str) -> dict:
+    try:
+        return {"id": job_id, "content": service.raw(job_id)}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e)) from e
+
+
 @router.delete("/jobs/{job_id}", status_code=204)
 async def delete_job(job_id: str) -> Response:
     job = service.get(job_id)

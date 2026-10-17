@@ -47,7 +47,19 @@ class SlideSummarizerService:
         if job is None:
             raise FileNotFoundError(f"no such job: {job_id}")
 
-        for name in (OUTPUT_FILE, RAW_FILE):
+        # Only a skip job's deliverable is the transcript. A refine job has `raw()` for
+        # that, so falling back here would show the transcript as if it were the summary.
+        names = (OUTPUT_FILE, RAW_FILE) if job.params.action == "skip" else (OUTPUT_FILE,)
+        return self._read_first(job_id, names)
+
+    def raw(self, job_id: str) -> str:
+        """The OCR transcript so far, whatever the action."""
+        if self.repository.select_by_id(job_id) is None:
+            raise FileNotFoundError(f"no such job: {job_id}")
+        return self._read_first(job_id, (RAW_FILE,))
+
+    def _read_first(self, job_id: str, names: tuple[str, ...]) -> str:
+        for name in names:
             path = self.repository.resolve(job_id, name)
             if path.exists():
                 return path.read_text(encoding="utf-8")

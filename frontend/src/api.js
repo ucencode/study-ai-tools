@@ -85,6 +85,8 @@ export const listJobs = (service) =>
 
 export const getJob = (service, id) => request(`/${servicePath(service)}/jobs/${id}`);
 export const getOutput = (service, id) => request(`/${servicePath(service)}/jobs/${id}/output`);
+// Slides only: the OCR transcript, which /output no longer substitutes for a summary.
+export const getRaw = (service, id) => request(`/${servicePath(service)}/jobs/${id}/raw`);
 
 export const retryJob = (service, id) =>
   request(`/${servicePath(service)}/jobs/${id}/retry`, { method: "POST" });

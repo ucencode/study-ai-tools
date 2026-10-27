@@ -58,6 +58,25 @@ def test_the_established_ledger_is_stored_and_stripped(client, fake_llm):
     assert "<!-- established:" not in document
 
 
+def test_chapters_are_divided_by_exactly_one_rule_however_the_model_fences_them(client, fake_llm):
+    """The template is fenced by `---`, and models copy that fence only some of the time."""
+    fake_llm.chapter_texts = {
+        1: "---\n## One\n\nBody one.\n---\n",
+        2: "## Two\n\nBody two.\n",
+        3: "\n---\n\n## Three\n\nBody three, with its own rule.\n\n---\n\nStill three.\n",
+        4: "***\n## Four\n\nBody four.\n",
+    }
+
+    job = run(client, mode="full")
+
+    document = client.get(f"/api/{SERVICE}/jobs/{job['id']}/output").json()["content"]
+    material = document.split("# Study Material", 1)[1]
+    assert material.count("\n---\n") == 3 + 1  # one per gap, plus chapter 3's own rule
+    assert "## One" in material.split("\n---\n")[0]  # no rule before the first chapter
+    assert "***" not in material
+    assert "Body three, with its own rule.\n\n---\n\nStill three." in material
+
+
 def test_every_chapter_shares_one_byte_identical_prefix(client, fake_llm):
     """Ollama's prefix cache only hits on an exact match, so anything varying above
     the stable block silently doubles the cost of full mode."""

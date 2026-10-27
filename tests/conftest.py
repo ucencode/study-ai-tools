@@ -84,6 +84,7 @@ class FakeLLM:
         self.list_error = None     # set to a message to make Ollama look unreachable
         self.fail_pages = set()    # 1-based page numbers whose OCR raises
         self.fail_chapters = set() # 1-based chapter numbers that raise, once each
+        self.chapter_texts = {}    # 1-based chapter number → body, replacing CHAPTER_TEXT
         self.metadata = dict(METADATA)
         self.outline = [dict(entry) for entry in OUTLINE]
         self.quiz = [dict(question) for question in QUIZ]
@@ -131,7 +132,7 @@ class FakeLLM:
                 # Once: a retry of the same job has to be able to get past it.
                 self.fail_chapters.discard(int(index))
                 raise llm.LLMError("could not reach Ollama")
-            for chunk in _chunks(CHAPTER_TEXT):
+            for chunk in _chunks(self.chapter_texts.get(int(index), CHAPTER_TEXT)):
                 yield chunk
             yield f"\n<!-- established: {topic.lower()}; term -->"
             return

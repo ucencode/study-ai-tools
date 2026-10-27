@@ -31,6 +31,8 @@ INPUT_FILE = "input.txt"
 PLAN_FILE = "plan.md"
 OUTPUT_FILE = "output.md"
 CHAPTERS_DIR = "chapters"
+# A Markdown horizontal rule on a line of its own: `---`, `***` or `___`, three or more.
+RULE = re.compile(r"(-{3,}|\*{3,}|_{3,})")
 
 MODES = [
     {"value": "short", "label": "Short Textbook",
@@ -334,10 +336,14 @@ class CurriculumGeneratorService:
         job = self.repository.require(job_id)
         order = {chapter.topic: chapter for chapter in job.chapters}
         bodies = [
-            self.repository.resolve(job_id, order[entry.topic].file).read_text(encoding="utf-8")
+            self._strip_rules(
+                self.repository.resolve(job_id, order[entry.topic].file).read_text(encoding="utf-8")
+            )
             for entry in outline if entry.topic in order
         ]
-        return "\n\n".join(bodies)
+        # The divider is added here, once per gap. Models copy the template's own `---`
+        # around a chapter only some of the time, so each body is stripped of it above.
+        return "\n\n---\n\n".join(bodies)
 
     async def _chapter(
         self,
@@ -393,10 +399,24 @@ class CurriculumGeneratorService:
         """
         match = re.search(r"<!--\s*established:(.*?)-->", text, flags=re.DOTALL | re.IGNORECASE)
         if match:
-            body = (text[: match.start()] + text[match.end():]).strip()
+            body = CurriculumGeneratorService._strip_rules(text[: match.start()] + text[match.end():])
             terms = [t.strip() for t in match.group(1).split(";") if t.strip()]
             return body, terms or [topic]
-        return text.strip(), [topic]
+        return CurriculumGeneratorService._strip_rules(text), [topic]
+
+    @staticmethod
+    def _strip_rules(text: str) -> str:
+        """Drop horizontal rules at the very start and end of a chapter.
+
+        The template is fenced by `---` lines, and models reproduce them inconsistently.
+        Only the edges are touched: a rule inside the chapter is the model's own choice.
+        """
+        lines = text.strip().splitlines()
+        while lines and (RULE.fullmatch(lines[0].strip()) or not lines[0].strip()):
+            lines.pop(0)
+        while lines and (RULE.fullmatch(lines[-1].strip()) or not lines[-1].strip()):
+            lines.pop()
+        return "\n".join(lines)
 
     # ── assembly ─────────────────────────────────────────────────────────────
 

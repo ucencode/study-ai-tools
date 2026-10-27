@@ -60,6 +60,8 @@ def test_a_codex_name_runs_one_ephemeral_read_only_turn(codex_cli):
     assert args[args.index("--model") + 1] == "gpt-5.6-sol"  # prefix stripped
     assert args[args.index("--sandbox") + 1] == "read-only"
     assert "--ephemeral" in args  # no session is left in ~/.codex/sessions
+    assert "--ignore-user-config" in args  # the user's own Codex setup never applies
+    assert args[args.index("-c") + 1] == 'model_reasoning_effort="low"'
     assert args[-1] == "-"  # prompt on stdin
     assert calls[0]["process"].stdin == b"You write study notes.\n\nTransactions."
 

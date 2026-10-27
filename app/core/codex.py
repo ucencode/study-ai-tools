@@ -10,6 +10,10 @@ import json
 import tempfile
 from pathlib import Path
 
+# Each call writes from a fully specified prompt, so long deliberation buys little
+# and costs time on every chapter. "low" is the lowest level Codex models accept.
+REASONING_EFFORT = "low"
+
 
 class CodexError(RuntimeError):
     """Anything that went wrong running the Codex CLI."""
@@ -31,6 +35,11 @@ async def run(model: str, messages: list[dict]) -> str:
                 "--sandbox", "read-only",
                 "--skip-git-repo-check",
                 "--ephemeral",
+                # The user's ~/.codex/config.toml (personality, MCP servers, plugins) is
+                # for their own coding sessions; skipping it starts each call faster and
+                # keeps the output independent of it. Login still comes from CODEX_HOME.
+                "--ignore-user-config",
+                "-c", f'model_reasoning_effort="{REASONING_EFFORT}"',
                 "--cd", workdir,
                 "--output-last-message", str(reply),
                 "-",

@@ -16,6 +16,8 @@ export const SERVICE_LABEL = {
 
 export const SLIDES = "slide_summarizer";
 export const CURRICULUM = "curriculum_generator";
+// Not a service: the workspace tab for the Settings page.
+export const SETTINGS = "settings";
 
 export class ApiError extends Error {
   constructor(status, detail) {
@@ -70,6 +72,18 @@ function servicePath(service) {
 export const getHealth = () => request("/health");
 export const getConfig = () => request("/config");
 export const getModels = () => request("/models");
+
+export const getSettings = () => request("/settings");
+
+export const saveSettings = (settings) =>
+  request("/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  });
+
+// Codex models are text-only and, for slides, refine summaries and deep documents only.
+export const isCodex = (name) => name.startsWith("codex/");
 
 // /models gives role lists as plain names but `models` as records. An unclassified
 // model is an unknown capability, so falling back to the full list is something the

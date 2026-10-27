@@ -6,6 +6,8 @@ DATA_DIR = PROJECT_ROOT / "data"
 JOBS_DIR = DATA_DIR / "jobs"
 # Saved settings, one directory per service. Presets hold no input, only how to run one.
 PRESETS_DIR = DATA_DIR / "presets"
+# App-wide settings, edited on the Settings page.
+SETTINGS_FILE = DATA_DIR / "settings.json"
 # Uploads land here while being size-checked, before a job id exists.
 TMP_DIR = DATA_DIR / "tmp"
 

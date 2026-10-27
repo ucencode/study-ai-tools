@@ -6,11 +6,15 @@ listing it here only tells the UI what to offer for each role.
 
 import tomllib
 from pathlib import Path
+from typing import Sequence
 
 from app.core import llm
 from app.core.paths import MODELS_DEFAULT_FILE, MODELS_FILE
 
 ROLES = ("vision", "refine", "llm")
+
+# Codex is text-only, so it never plays `vision`.
+CODEX_ROLES = ["refine", "llm"]
 
 
 def _models_file() -> Path:
@@ -35,11 +39,12 @@ def catalogue() -> dict[str, dict]:
     return {entry["name"]: entry for entry in _entries() if entry.get("name")}
 
 
-async def available() -> list[dict]:
+async def available(codex_models: Sequence[str] = ()) -> list[dict]:
     """Every installed model, annotated with its listed roles.
 
     A model Ollama has but the config doesn't mention is still returned, marked
     `unlisted` with no roles — usable the day it lands, just without role hints.
+    `codex_models` are the `codex/<model>` names the Settings page enabled.
     """
     listed = catalogue()
     installed = await llm.list_models()
@@ -65,10 +70,13 @@ async def available() -> list[dict]:
                 "unlisted": False,
             })
 
+    for name in codex_models:
+        models.append({"name": name, "roles": CODEX_ROLES, "where": "codex", "unlisted": False})
+
     return sorted(models, key=lambda m: m["name"])
 
 
-async def for_role(role: str) -> list[str]:
+async def for_role(role: str, codex_models: Sequence[str] = ()) -> list[str]:
     """Installed model names explicitly classified as able to do `role`.
 
     Unlisted models are deliberately excluded. The catalogue is a hint rather than a
@@ -76,4 +84,4 @@ async def for_role(role: str) -> list[str]:
     unknown capability, and offering a text-only model as an OCR choice is worse than
     offering nothing. Use `available()` when you want everything Ollama has.
     """
-    return [m["name"] for m in await available() if role in m["roles"]]
+    return [m["name"] for m in await available(codex_models) if role in m["roles"]]

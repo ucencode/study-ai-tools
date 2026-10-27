@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import worker
-from app.routers import curriculum_generator, meta, slide_summarizer
+from app.routers import curriculum_generator, meta, settings, slide_summarizer
 
 
 @asynccontextmanager
@@ -47,6 +47,7 @@ app.add_middleware(
 app.include_router(meta.router)
 app.include_router(slide_summarizer.router)
 app.include_router(curriculum_generator.router)
+app.include_router(settings.router)
 
 # The built UI, when there is one: `cd frontend && npm run build`, and the whole app is
 # this one process. Mounted last so /api keeps precedence, and guarded because dist/ is

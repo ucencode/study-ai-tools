@@ -26,6 +26,7 @@ paths.DATA_DIR = _ROOT
 paths.JOBS_DIR = _ROOT / "jobs"
 paths.PRESETS_DIR = _ROOT / "presets"
 paths.TMP_DIR = _ROOT / "tmp"
+paths.SETTINGS_FILE = _ROOT / "settings.json"
 
 from app.core import llm  # noqa: E402
 from app.core.prompts import curriculum_generator as curriculum_prompts  # noqa: E402
@@ -199,6 +200,14 @@ def clean_presets():
 def _wipe_presets():
     for directory in paths.PRESETS_DIR.glob("*"):
         shutil.rmtree(directory, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def clean_settings():
+    """Every test starts with Codex switched off, so no test sees another's models."""
+    paths.SETTINGS_FILE.unlink(missing_ok=True)
+    yield
+    paths.SETTINGS_FILE.unlink(missing_ok=True)
 
 
 @pytest.fixture

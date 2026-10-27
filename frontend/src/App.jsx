@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { SLIDES, getConfig, getHealth, getModels } from "./api.js";
+import { SETTINGS, SLIDES, getConfig, getHealth, getModels } from "./api.js";
 import { usePolling } from "./usePolling.js";
 import CurriculumForm from "./components/CurriculumForm.jsx";
 import Header from "./components/Header.jsx";
 import JobDetail from "./components/JobDetail.jsx";
 import JobList from "./components/JobList.jsx";
+import Settings from "./components/Settings.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import SlidesForm from "./components/SlidesForm.jsx";
 import { INLINE_ERROR } from "./styles.js";
@@ -113,6 +114,9 @@ export default function App() {
               service={activeJob.service}
               onDeleted={deleted}
             />
+          ) : activeTab === SETTINGS ? (
+            // Saving changes which Codex models exist, so the dropdowns reload.
+            <Settings onSaved={reloadMeta} />
           ) : activeTab === SLIDES ? (
             <SlidesForm {...formProps} />
           ) : (

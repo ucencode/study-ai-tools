@@ -3,6 +3,9 @@
 Local and Ollama Cloud go through the same client — a cloud model is identified only
 by its name (``gpt-oss:120b-cloud``). Set OLLAMA_HOST / OLLAMA_API_KEY to point at a
 remote Ollama instead of the local one.
+
+A model named ``codex/<model>`` goes through the OpenAI Codex CLI instead (see
+``app.core.codex``). It is text-only and returns the whole reply at once.
 """
 
 import json
@@ -11,6 +14,8 @@ import re
 from typing import Any, AsyncIterator, Iterable, Sequence
 
 from ollama import AsyncClient
+
+from app.core import codex
 
 _client: AsyncClient | None = None
 
@@ -37,6 +42,20 @@ def is_cloud(model: str) -> bool:
     return model.endswith(CLOUD_SUFFIXES)
 
 
+CODEX_PREFIX = "codex/"
+
+
+def is_codex(model: str) -> bool:
+    return model.startswith(CODEX_PREFIX)
+
+
+async def _codex(model: str, messages: list[dict]) -> str:
+    try:
+        return await codex.run(model.removeprefix(CODEX_PREFIX), messages)
+    except codex.CodexError as e:
+        raise LLMError(f"generation failed on '{model}': {e}") from e
+
+
 async def list_models(keywords: Sequence[str] | None = None) -> list[str]:
     """Installed model names, optionally filtered to those matching `keywords`."""
     try:
@@ -52,7 +71,7 @@ async def list_models(keywords: Sequence[str] | None = None) -> list[str]:
 
 async def unload(model: str) -> None:
     """Evict a model from VRAM. Best effort — never fatal, and pointless for cloud."""
-    if is_cloud(model):
+    if is_cloud(model) or is_codex(model):
         return
     try:
         await client().generate(model=model, keep_alive=0)
@@ -67,7 +86,11 @@ async def stream_chat(
     options: dict | None = None,
     think: bool | None = None,
 ) -> AsyncIterator[str]:
-    """Yield content chunks as the model emits them."""
+    """Yield content chunks as the model emits them. A Codex model yields one chunk."""
+    if is_codex(model):
+        yield await _codex(model, messages)
+        return
+
     kwargs: dict[str, Any] = {}
     if think is not None:
         kwargs["think"] = think
@@ -95,6 +118,9 @@ async def complete(
     think: bool | None = None,
 ) -> str:
     """Single non-streaming completion."""
+    if is_codex(model):
+        return await _codex(model, messages)
+
     kwargs: dict[str, Any] = {}
     if think is not None:
         kwargs["think"] = think

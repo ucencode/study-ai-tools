@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { SLIDES, createSlideJob, modelsForRole } from "../api.js";
+import { SLIDES, createSlideJob, isCodex, modelsForRole } from "../api.js";
 import { fileSize, languageLabel } from "../format.js";
 import { INLINE_ERROR, INLINE_WARNING, MUTED, PRIMARY, QUIET, ROW, SECONDARY_BUTTON } from "../styles.js";
 import PresetBar from "./PresetBar.jsx";
@@ -42,12 +42,17 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
 
   const vision = modelsForRole(models, "vision");
   const refine = modelsForRole(models, "refine");
-  const [firstVision, firstRefine] = [vision.options[0], refine.options[0]];
+  // Codex refines summaries and deep documents only; the backend rejects it for `clean`.
+  const refineOptions =
+    action === "clean" ? refine.options.filter((name) => !isCodex(name)) : refine.options;
+  const [firstVision, firstRefine] = [vision.options[0], refineOptions[0]];
+  const refineOffered = refineOptions.includes(refineModel);
 
   useEffect(() => {
     if (!ocrModel && firstVision) setOcrModel(firstVision);
-    if (!refineModel && firstRefine) setRefineModel(firstRefine);
-  }, [ocrModel, refineModel, firstVision, firstRefine]);
+    // Also replaces a Codex choice the moment the action switches to `clean`.
+    if (!refineOffered && firstRefine) setRefineModel(firstRefine);
+  }, [ocrModel, refineOffered, firstVision, firstRefine]);
 
   useEffect(() => {
     if (!toast || toast.progress) return undefined;
@@ -406,7 +411,7 @@ export default function SlidesForm({ config, models, ollamaDown, configError, on
             <label className="field">
               <span>Refine model</span>
               <select value={refineModel} onChange={(event) => setRefineModel(event.target.value)}>
-                {refine.options.map((name) => (
+                {refineOptions.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>

@@ -32,10 +32,12 @@ app/
   models/            Pydantic records (job schema, params, results)
   repositories/      job.json persistence — generic JobRepository[T] + two thin subclasses
                      plus PresetRepository[T] over data/presets/{service}/
+                     and SettingsRepository over data/settings.json
   services/          the pipelines; the layer both the API and CLI call
     preset.py        saved settings — every preset rule lives here, not in a router
+    settings.py      app-wide settings — which Codex models are offered
   routers/           HTTP only — validate, delegate, map exceptions to status codes
-  core/              llm, catalogue, languages, documents, markdown, paths, prompts/
+  core/              llm, codex, catalogue, languages, documents, markdown, paths, prompts/
   worker.py          one asyncio.Queue + one worker task
   cli.py             argparse, calls services directly (no HTTP, no worker)
 frontend/            React + Vite + Tailwind UI — plain React, six dependencies, no API client
@@ -47,7 +49,7 @@ frontend/            React + Vite + Tailwind UI — plain React, six dependencie
   src/api.js         one hand-written function per endpoint
   src/usePolling.js  the only polling primitive
   src/components/    shell, the two forms, the step wizard, the preset bar, the jobs rail,
-                     job detail
+                     job detail, settings
 ```
 
 Dependency direction is one-way: `routers → services → repositories → models`, with `core`
@@ -193,6 +195,8 @@ an explicit one: the prompt defaults to no and `--yes` alone does not answer it.
 
 `OLLAMA_HOST` / `OLLAMA_API_KEY` point at a remote Ollama. Cloud models are just names
 ending `-cloud` or `:cloud`. LibreOffice is optional and only needed for `.pptx`.
+
+A model named `codex/<model>` runs through the OpenAI Codex CLI (`app/core/codex.py`) and is billed to the ChatGPT subscription that `codex login` signed in, not per token. Each call is a fresh `codex exec --ephemeral` turn in an empty temporary directory with a read-only sandbox, so no Codex session is stored and `job.json` remains the only resume authority. Codex is text-only: it serves the curriculum `llm` role and the slide refine step for `summary` and `deep`, while `clean` and OCR stay on Ollama, and `SlideSummarizerService.create()` rejects any other combination. The reply arrives whole, so a chapter appears at once rather than growing on disk, and `options` and `think` are ignored. The model list is read live from `codex debug models` (entries with `visibility: "list"`), so it follows the account's plan and is never stored; `data/settings.json` holds only the on/off switch from the Settings page. If the CLI cannot list models, `/models` offers the Ollama models alone and the Settings page shows the raw error. The page also shows the plan, each limit window's used percentage and reset time, and the account's lifetime token total, read through `codex app-server` (`account/rateLimits/read`, `account/usage/read`) without a model call; `codex app-server` is marked experimental, so a protocol change surfaces as an error on that page only. The switch controls only what is offered, because routing is by model name and a queued job keeps the model its `params` recorded. Subscription usage limits apply, and a job that hits one fails and resumes on Retry like any other.
 
 ## History
 

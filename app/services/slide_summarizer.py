@@ -24,6 +24,8 @@ from app.repositories.slide_summarizer import SlideSummarizerRepository
 
 RAW_FILE = "raw.txt"
 OUTPUT_FILE = "output.md"
+# The actions a Codex refine model may run. `clean` stays on Ollama.
+CODEX_ACTIONS = ("summary", "deep")
 
 
 class SlideSummarizerService:
@@ -79,6 +81,8 @@ class SlideSummarizerService:
             )
         if params.action != "skip" and not params.refine_model:
             raise ValueError(f"action '{params.action}' needs a refine_model")
+        if params.refine_model and llm.is_codex(params.refine_model) and params.action not in CODEX_ACTIONS:
+            raise ValueError(f"Codex models refine only {' and '.join(CODEX_ACTIONS)}, not '{params.action}'")
 
         job_id = new_id()
         job_dir = self.repository.job_dir(job_id)
